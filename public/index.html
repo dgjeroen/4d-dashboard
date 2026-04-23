@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vierdaagse Social Dashboard</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    :root {
+      --bg:        #0f0f13;
+      --card:      #1a1a24;
+      --card-h:    #22223a;
+      --border:    #2a2a3a;
+      --text:      #e8e8f0;
+      --muted:     #7a7a9a;
+      --accent:    #6c63ff;
+      --ig:        #e1306c;
+      --tt:        #ff0050;
+      --fb:        #1877f2;
+      --day:       #f5a623;
+      --night:     #4a90e2;
+      --green:     #22c55e;
+      --red:       #ef4444;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 200;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    header h1 { font-size: 1rem; font-weight: 700; }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+    .dot.off { background: var(--red); box-shadow: 0 0 6px var(--red); animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+    #stats { margin-left: auto; font-size: .75rem; color: var(--muted); white-space: nowrap; }
+
+    /* ── Hashtag bar ─────────────────────────────────────────────────────── */
+    #hashtagBar {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 7px 20px;
+      font-size: .73rem; color: var(--muted);
+      overflow-x: auto; white-space: nowrap;
+    }
+    .hpill {
+      display: inline-block;
+      background: rgba(108,99,255,.15); color: var(--accent);
+      padding: 2px 8px; border-radius: 10px; margin-right: 4px;
+    }
+
+    /* ── Filters ─────────────────────────────────────────────────────────── */
+    #filters {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    }
+    .fbtn {
+      padding: 4px 12px; border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+      cursor: pointer; font-size: .78rem; transition: all .15s;
+    }
+    .fbtn:hover  { border-color: var(--accent); color: var(--text); }
+    .fbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .fbtn.day.active   { background: var(--day);   border-color: var(--day); }
+    .fbtn.night.active { background: var(--night); border-color: var(--night); }
+    .fbtn.ig.active    { background: var(--ig);    border-color: var(--ig); }
+    .fbtn.tt.active    { background: var(--tt);    border-color: var(--tt); }
+    .sep { color: var(--border); margin: 0 2px; }
+
+    /* ── Feed grid ───────────────────────────────────────────────────────── */
+    #feed {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
+      padding: 16px 20px;
+      max-width: 1800px; margin: 0 auto;
+    }
+
+    /* ── Card ────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .card.fresh { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+    .card-img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+      background: var(--border);
+    }
+    .card-img-ph {
+      width: 100%; aspect-ratio: 1;
+      background: var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.5rem; color: var(--muted);
+    }
+
+    .card-meta {
+      padding: 8px 12px 0;
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: .68rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px; text-transform: uppercase;
+    }
+    .badge.instagram { background: var(--ig); color: #fff; }
+    .badge.tiktok    { background: var(--tt); color: #fff; }
+    .badge.facebook  { background: var(--fb); color: #fff; }
+    .badge.day   { background: rgba(245,166,35,.18); color: var(--day); }
+    .badge.night { background: rgba(74,144,226,.18);  color: var(--night); }
+
+    .card-author {
+      margin-left: auto; font-size: .82rem; font-weight: 600;
+      color: var(--text); text-decoration: none;
+    }
+    .card-author:hover { color: var(--accent); }
+
+    .card-time  { padding: 3px 12px 0; font-size: .7rem; color: var(--muted); }
+    .card-likes { font-size: .7rem; color: var(--muted); float: right; }
+
+    .caption {
+      padding: 6px 12px;
+      font-size: .81rem; line-height: 1.5; color: var(--text);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .caption.open { display: block; -webkit-line-clamp: unset; }
+
+    .actions {
+      padding: 7px 12px 11px;
+      display: flex; gap: 5px; align-items: center;
+    }
+    .btn {
+      padding: 4px 9px; border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+      cursor: pointer; font-size: .73rem;
+      display: flex; align-items: center; gap: 3px;
+      transition: all .15s;
+    }
+    .btn:hover  { border-color: var(--accent); color: var(--text); }
+    .btn.ok     { background: rgba(34,197,94,.12); color: var(--green); border-color: var(--green); }
+    .btn-open {
+      margin-left: auto;
+      padding: 4px 9px; border-radius: 6px;
+      border: 1px solid var(--border);
+      color: var(--muted); font-size: .73rem;
+      text-decoration: none; transition: all .15s;
+    }
+    .btn-open:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Empty state ─────────────────────────────────────────────────────── */
+    .empty {
+      grid-column: 1/-1; text-align: center;
+      padding: 60px 20px; color: var(--muted);
+    }
+    .empty h2 { font-size: 1.2rem; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="dot"></div>
+  <h1>🏆 Vierdaagse Social Dashboard</h1>
+  <span id="stats">Verbinden…</span>
+</header>
+
+<div id="hashtagBar">Hashtags laden…</div>
+
+<div id="filters">
+  <button class="fbtn active" onclick="setFilter('all',this)">Alles</button>
+  <button class="fbtn day"   onclick="setFilter('day',this)">☀️ Vierdaagse (dag)</button>
+  <button class="fbtn night" onclick="setFilter('night',this)">🌙 Feesten (nacht)</button>
+  <span class="sep">|</span>
+  <button class="fbtn ig" onclick="setFilter('instagram',this)">Instagram</button>
+  <button class="fbtn tt" onclick="setFilter('tiktok',this)">TikTok</button>
+</div>
+
+<div id="feed">
+  <div class="empty">
+    <h2>⏳ Eerste scrape loopt…</h2>
+    <p>Posts verschijnen zodra de scraper klaar is (±30 s).</p>
+  </div>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allPosts   = [];
+  let knownIds   = new Set();
+  let activeFilter = 'all';
+
+  // Dag = 06:00-19:00, Nacht = 19:00-06:00
+  const isDayPost = ts => { const h = new Date(ts).getHours(); return h >= 6 && h < 19; };
+  const timeLabel = ts => new Date(ts).toLocaleString('nl-NL',
+    { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  function setFilter(f, btn) {
+    activeFilter = f;
+    document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderPosts();
+  }
+
+  function filtered() {
+    return allPosts.filter(p => {
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'day')   return  isDayPost(p.timestamp);
+      if (activeFilter === 'night') return !isDayPost(p.timestamp);
+      return p.platform === activeFilter;
+    });
+  }
+
+  // ── Clipboard helpers ──────────────────────────────────────────────────────
+  function flash(selector, text) {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    const orig = el.textContent;
+    el.textContent = text;
+    el.classList.add('ok');
+    setTimeout(() => { el.textContent = orig; el.classList.remove('ok'); }, 2000);
+  }
+
+  function copyText(id) {
+    const p = allPosts.find(x => x.id === id);
+    if (!p) return;
+    navigator.clipboard.writeText(p.caption)
+      .then(() => flash(`[data-copy="${id}"]`, '✓ Gekopieerd'));
+  }
+
+  function copyEmbed(id) {
+    const p = allPosts.find(x => x.id === id);
+    if (!p || !p.imageUrl) return;
+    const snippet =
+      `<a href="${esc(p.postUrl)}" target="_blank" rel="noopener">` +
+      `<img src="${esc(p.imageUrl)}" alt="${esc(p.caption.slice(0,80))}" ` +
+      `style="max-width:100%;height:auto;" loading="lazy"></a>`;
+    navigator.clipboard.writeText(snippet)
+      .then(() => flash(`[data-embed="${id}"]`, '✓ Gekopieerd'));
+  }
+
+  function toggleCaption(id) {
+    document.querySelector(`[data-cap="${id}"]`)?.classList.toggle('open');
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function cardHtml(p) {
+    const tod   = isDayPost(p.timestamp) ? 'day' : 'night';
+    const todLbl = tod === 'day' ? '☀️ Dag' : '🌙 Nacht';
+    const fresh  = !knownIds.has(p.id) ? ' fresh' : '';
+
+    const imgEl = p.imageUrl
+      ? `<a href="${esc(p.postUrl)}" target="_blank" rel="noopener">
+           <img class="card-img" src="${esc(p.imageUrl)}" alt="" loading="lazy"
+                onerror="this.style.display='none'">
+         </a>`
+      : `<div class="card-img-ph">${p.platform === 'tiktok' ? '🎵' : '📷'}</div>`;
+
+    const embedBtn = p.imageUrl
+      ? `<button class="btn" data-embed="${p.id}" onclick="copyEmbed('${p.id}')">🖼️ Embed</button>`
+      : '';
+
+    const capEl = p.caption
+      ? `<div class="caption" data-cap="${p.id}" onclick="toggleCaption('${p.id}')">${esc(p.caption)}</div>`
+      : '';
+
+    return `
+      <div class="card${fresh}">
+        ${imgEl}
+        <div class="card-meta">
+          <span class="badge ${p.platform}">${p.platform}</span>
+          <span class="badge ${tod}">${todLbl}</span>
+          <a class="card-author" href="${esc(p.authorUrl)}" target="_blank" rel="noopener">
+            @${esc(p.author)}
+          </a>
+        </div>
+        <div class="card-time">
+          ${timeLabel(p.timestamp)}
+          <span class="card-likes">❤️ ${p.likes.toLocaleString('nl-NL')}</span>
+        </div>
+        ${capEl}
+        <div class="actions">
+          <button class="btn" data-copy="${p.id}" onclick="copyText('${p.id}')">📋 Tekst</button>
+          ${embedBtn}
+          <a class="btn-open" href="${esc(p.postUrl)}" target="_blank" rel="noopener">↗ Open</a>
+        </div>
+      </div>`;
+  }
+
+  function renderPosts() {
+    const feed = document.getElementById('feed');
+    const list = filtered();
+
+    if (!list.length) {
+      feed.innerHTML =
+        '<div class="empty"><h2>Geen posts gevonden</h2>' +
+        '<p>Pas het filter aan of wacht op de volgende scrape.</p></div>';
+      return;
+    }
+
+    feed.innerHTML = list.map(cardHtml).join('');
+    list.forEach(p => knownIds.add(p.id));
+  }
+
+  // ── Socket.io ──────────────────────────────────────────────────────────────
+  // window.__BASE is injected by the server when BASE_PATH is set.
+  const socket = io({ path: (window.__BASE || '') + '/socket.io' });
+
+  socket.on('connect', () => {
+    document.getElementById('dot').classList.remove('off');
+  });
+
+  socket.on('disconnect', () => {
+    document.getElementById('dot').classList.add('off');
+    document.getElementById('stats').textContent = 'Verbinding verbroken – opnieuw…';
+  });
+
+  socket.on('posts:update', posts => {
+    allPosts = posts;
+    document.getElementById('stats').textContent =
+      `${posts.length} posts · ${new Date().toLocaleTimeString('nl-NL')}`;
+    renderPosts();
+  });
+
+  socket.on('hashtags:update', tags => {
+    document.getElementById('hashtagBar').innerHTML =
+      '<strong style="color:var(--muted);margin-right:8px">Volgend:</strong>' +
+      tags.map(t => `<span class="hpill">#${t}</span>`).join('');
+  });
+</script>
+</body>
+</html>

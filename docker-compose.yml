@@ -1,0 +1,18 @@
+services:
+  vierdaagse-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "3001"
+    environment:
+      - PORT=3001
+      # Uncomment and set if serving under a sub-path instead of a subdomain:
+      # - BASE_PATH=/4d
+    volumes:
+      # Sessions persist across deploys so cookies survive restarts
+      - sessions:/app/sessions
+    restart: unless-stopped
+
+volumes:
+  sessions:
