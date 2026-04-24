@@ -234,12 +234,20 @@ async function getAllPosts(hashtags) {
   const results = [];
 
   for (const tag of hashtags) {
+    const tagLower = tag.toLowerCase();
     const [ig, tt] = await Promise.allSettled([
       scrapeInstagram(tag),
       scrapeTikTok(tag),
     ]);
-    if (ig.status === 'fulfilled') results.push(...ig.value);
-    if (tt.status === 'fulfilled') results.push(...tt.value);
+    if (ig.status === 'fulfilled') {
+      // Ensure the queried hashtag is always present, even if absent from caption
+      ig.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
+      results.push(...ig.value);
+    }
+    if (tt.status === 'fulfilled') {
+      tt.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
+      results.push(...tt.value);
+    }
 
     // Brief pause between hashtags to reduce rate-limit risk
     await new Promise(r => setTimeout(r, 1_500));
