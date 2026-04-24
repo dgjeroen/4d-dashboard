@@ -44,12 +44,25 @@ function setActiveTopic(topic) {
   console.log(`[Topic] Active: "${topic.name}" (${topic.hashtags.length} hashtags)`);
 }
 
+function classifyGroup(post) {
+  if (!activeTopic) return 'none';
+  const setA = new Set(activeTopic.groupA?.hashtags || []);
+  const setB = new Set(activeTopic.groupB?.hashtags || []);
+  const tags = post.hashtags || [];
+  const inA = tags.some(t => setA.has(t));
+  const inB = tags.some(t => setB.has(t));
+  if (inA && inB) return 'both';
+  if (inA) return 'a';
+  if (inB) return 'b';
+  return 'none';
+}
+
 function postsWithStatus() {
   const reviewed = activeTopic?.reviewedIds || {};
   return Array.from(postCache.values())
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 300)
-    .map(p => ({ ...p, reviewStatus: reviewed[p.id] || null }));
+    .map(p => ({ ...p, reviewStatus: reviewed[p.id] || null, group: classifyGroup(p) }));
 }
 
 // ─── Broadcast ────────────────────────────────────────────────────────────────
@@ -112,8 +125,8 @@ io.on('connection', (socket) => {
   }
 
   // ── Create new topic ───────────────────────────────────────────────────────
-  socket.on('topic:create', ({ name, hashtags }, cb) => {
-    const topic = topics.create(name, hashtags);
+  socket.on('topic:create', ({ name, groupA, groupB }, cb) => {
+    const topic = topics.create(name, groupA, groupB);
     postCache.clear();
     setActiveTopic(topic);
     io.emit('topics:list',    topics.list().map(topics.summary));
