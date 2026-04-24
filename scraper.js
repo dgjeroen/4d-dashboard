@@ -113,21 +113,28 @@ async function scrapeInstagram(hashtag) {
 
   page.on('response', async (res) => {
     const url = res.url();
-    // Log all Instagram API/graphql responses for debugging
-    if (url.includes('instagram.com') && (url.includes('/api/') || url.includes('graphql'))) {
-      console.log(`[Instagram] Response ${res.status()} ${url.slice(0, 120)}`);
-    }
     if (!res.ok()) return;
-    if (!url.includes('/api/v1/tags/') && !url.includes('graphql/query')) return;
+    if (!url.includes('instagram.com')) return;
+
+    const isRelevant =
+      url.includes('/api/v1/tags/') ||
+      url.includes('graphql/query') ||
+      url.includes('/api/graphql') ||
+      url.includes('fbsearch/web/top_serp');
+
+    if (!isRelevant) return;
+
     try {
       const data = await res.json();
-      // v1 sections API
+
+      // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
         for (const { media } of (section.layout_content?.medias || [])) {
           posts.push(parseInstagramMedia(media));
         }
       }
-      // Legacy GraphQL
+
+      // GraphQL hashtag edges
       const edges =
         data?.data?.hashtag?.edge_hashtag_to_media?.edges ||
         data?.data?.recent?.sections?.flatMap(s =>
@@ -136,15 +143,28 @@ async function scrapeInstagram(hashtag) {
       for (const { node } of edges) {
         if (node) posts.push(parseInstagramMedia(node));
       }
-    } catch { /* non-JSON or parse error */ }
+
+      // fbsearch top_serp – media items in hashtag results
+      for (const item of (data?.hashtags || [])) {
+        const media = item?.hashtag?.media_bundles?.flatMap(b => b.medias || []) || [];
+        for (const m of media) posts.push(parseInstagramMedia(m));
+      }
+      // top_serp media list
+      for (const item of (data?.medias || [])) {
+        if (item?.media) posts.push(parseInstagramMedia(item.media));
+      }
+
+      if (posts.length > 0) {
+        console.log(`[Instagram] Parsed ${posts.length} posts so far from ${url.slice(0, 80)}`);
+      }
+    } catch { /* non-JSON */ }
   });
 
   try {
     const url = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
-    console.log(`[Instagram] Navigating to ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
     const finalUrl = page.url();
-    console.log(`[Instagram] Landed on: ${finalUrl}`);
+    console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
     await page.waitForTimeout(5_000);
     await saveSession(ctx, 'instagram');
   } catch (err) {
