@@ -99,8 +99,12 @@ async function scrapeInstagram(hashtag) {
   const posts = [];
 
   page.on('response', async (res) => {
-    if (!res.ok()) return;
     const url = res.url();
+    // Log all Instagram API/graphql responses for debugging
+    if (url.includes('instagram.com') && (url.includes('/api/') || url.includes('graphql'))) {
+      console.log(`[Instagram] Response ${res.status()} ${url.slice(0, 120)}`);
+    }
+    if (!res.ok()) return;
     if (!url.includes('/api/v1/tags/') && !url.includes('graphql/query')) return;
     try {
       const data = await res.json();
@@ -123,10 +127,11 @@ async function scrapeInstagram(hashtag) {
   });
 
   try {
-    await page.goto(
-      `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`,
-      { waitUntil: 'domcontentloaded', timeout: TIMEOUT }
-    );
+    const url = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
+    console.log(`[Instagram] Navigating to ${url}`);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+    const finalUrl = page.url();
+    console.log(`[Instagram] Landed on: ${finalUrl}`);
     await page.waitForTimeout(5_000);
     await saveSession(ctx, 'instagram');
   } catch (err) {
