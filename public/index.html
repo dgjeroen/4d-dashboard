@@ -129,6 +129,8 @@
     .fbtn.ig.active { background: var(--ig);    border-color: var(--ig); }
     .fbtn.tt.active { background: var(--tt);    border-color: var(--tt); }
     .fbtn.warn.active { background: var(--yellow,#eab308); border-color: var(--yellow,#eab308); color:#000; }
+    .fbtn.refresh { margin-left: auto; }
+    .fbtn.refresh.loading { opacity: .5; cursor: not-allowed; }
     .sep { color: var(--border); font-size: .8rem; }
     .hdr-btn {
       padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border);
@@ -293,6 +295,7 @@
       <button class="fbtn" id="hideBtn" onclick="toggleHideReviewed()">👁 Beoordeeld</button>
 
       <span id="stats"></span>
+      <button class="fbtn refresh" id="refreshBtn" onclick="manualScrape()">↻ Vernieuwen</button>
       <button class="hdr-btn" onclick="switchTopic()">⇄ Wissel</button>
     </header>
 
@@ -613,6 +616,42 @@
     const p = allPosts.find(x=>x.id===postId);
     if (p) p.reviewStatus = status;
     renderPosts();
+  });
+
+  // ── Manual refresh ─────────────────────────────────────────────────────────
+  let refreshTimer = null;
+  function manualScrape() {
+    const btn = document.getElementById('refreshBtn');
+    if (btn.classList.contains('loading')) return;
+    socket.emit('scrape:now');
+  }
+  socket.on('scrape:started', () => {
+    const btn = document.getElementById('refreshBtn');
+    btn.classList.add('loading');
+    btn.textContent = '↻ Bezig…';
+  });
+  socket.on('scrape:cooldown', secs => {
+    const btn = document.getElementById('refreshBtn');
+    btn.classList.add('loading');
+    clearInterval(refreshTimer);
+    let remaining = secs || 5;
+    btn.textContent = `↻ Wacht ${remaining}s`;
+    refreshTimer = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(refreshTimer);
+        btn.classList.remove('loading');
+        btn.textContent = '↻ Vernieuwen';
+      } else {
+        btn.textContent = `↻ Wacht ${remaining}s`;
+      }
+    }, 1000);
+  });
+  socket.on('scrape:done', () => {
+    clearInterval(refreshTimer);
+    const btn = document.getElementById('refreshBtn');
+    btn.classList.remove('loading');
+    btn.textContent = '↻ Vernieuwen';
   });
 </script>
 </body>

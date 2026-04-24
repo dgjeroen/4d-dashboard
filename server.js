@@ -8,7 +8,7 @@ const path       = require('path');
 const fs         = require('fs');
 
 const { getAllPosts }                       = require('./scraper');
-const { getHashtags, setHashtags, updateHashtags } = require('./hashtags');
+const { getHashtags, setHashtags, updateHashtags, trackRemoval } = require('./hashtags');
 const topics                               = require('./topics');
 
 const app    = express();
@@ -33,9 +33,10 @@ if (BASE) {
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
-const postCache    = new Map();
-let   scrapeRunning = false;
-let   activeTopic  = null;
+const postCache      = new Map();
+let   scrapeRunning  = false;
+let   activeTopic    = null;
+let   lastManualScrape = 0;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setActiveTopic(topic) {
@@ -94,6 +95,7 @@ async function runScrape() {
     }
     console.log(`[Scrape] Done in ${((Date.now()-t0)/1000).toFixed(1)}s – +${added} new, total: ${postCache.size}`);
     broadcastAll();
+    io.emit('scrape:done');
   } catch (err) {
     console.error('[Scrape] Error:', err.message);
   } finally {
@@ -178,6 +180,12 @@ io.on('connection', (socket) => {
   // ── Update hashtags for active topic ──────────────────────────────────────
   socket.on('topic:updateHashtags', ({ hashtags }) => {
     if (!activeTopic) return;
+
+    // Track which tags the user manually removed so they won't be re-discovered
+    const prevSet = new Set(getHashtags());
+    const nextSet = new Set(hashtags);
+    for (const t of prevSet) { if (!nextSet.has(t)) trackRemoval(t); }
+
     activeTopic = topics.updateHashtags(activeTopic.id, hashtags);
     setHashtags(hashtags);
 
@@ -193,6 +201,22 @@ io.on('connection', (socket) => {
     io.emit('hashtags:update', getHashtags());
     io.emit('posts:update',    postsWithStatus());
     io.emit('topic:active',    topics.summary(activeTopic));
+  });
+
+  socket.on('scrape:now', () => {
+    const COOLDOWN = 90_000; // 90 seconds
+    const elapsed  = Date.now() - lastManualScrape;
+    if (elapsed < COOLDOWN) {
+      socket.emit('scrape:cooldown', Math.ceil((COOLDOWN - elapsed) / 1000));
+      return;
+    }
+    if (scrapeRunning) {
+      socket.emit('scrape:cooldown', 0); // already running, just wait
+      return;
+    }
+    lastManualScrape = Date.now();
+    socket.emit('scrape:started');
+    runScrape();
   });
 
   socket.on('disconnect', () => {
