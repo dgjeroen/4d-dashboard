@@ -70,8 +70,17 @@ function markPost(topicId, postId, status) {
 function updateHashtags(topicId, hashtags) {
   const t = load(topicId);
   if (!t) return null;
-  // Only update the combined list; groups stay intact
   t.hashtags = hashtags;
+  return save(t);
+}
+
+function update(topicId, { name, groupA, groupB }) {
+  const t = load(topicId);
+  if (!t) return null;
+  if (name)   t.name   = name;
+  if (groupA) t.groupA = groupA;
+  if (groupB) t.groupB = groupB;
+  t.hashtags = [...new Set([...(t.groupA.hashtags||[]), ...(t.groupB.hashtags||[])])];
   return save(t);
 }
 
@@ -88,4 +97,4 @@ function summary(t) {
   };
 }
 
-module.exports = { list, load, save, create, markPost, updateHashtags, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };
+module.exports = { list, load, save, create, update, markPost, updateHashtags, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };

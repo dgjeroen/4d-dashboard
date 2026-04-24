@@ -162,6 +162,19 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Update existing topic ──────────────────────────────────────────────────
+  socket.on('topic:update', ({ id, name, groupA, groupB }, cb) => {
+    const updated = topics.update(id, { name, groupA, groupB });
+    if (!updated) { if (cb) cb({ ok: false }); return; }
+    if (activeTopic?.id === id) {
+      setActiveTopic(updated);
+      io.emit('topic:active',   topics.summary(updated));
+      io.emit('hashtags:update', getHashtags());
+    }
+    io.emit('topics:list', topics.list().map(topics.summary));
+    if (cb) cb({ ok: true });
+  });
+
   // ── Update hashtags for active topic ──────────────────────────────────────
   socket.on('topic:updateHashtags', ({ hashtags }) => {
     if (!activeTopic) return;

@@ -322,15 +322,25 @@
           <span class="tc-gpill a">📘 ${esc(t.groupA.name)}: ${t.groupA.hashtags.slice(0,3).map(h=>'#'+h).join(' ')}${t.groupA.hashtags.length>3?' …':''}</span>
           ${t.groupB.hashtags.length ? `<span class="tc-gpill b">🟡 ${esc(t.groupB.name)}: ${t.groupB.hashtags.slice(0,3).map(h=>'#'+h).join(' ')}${t.groupB.hashtags.length>3?' …':''}</span>` : ''}
         </div>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn-start" style="font-size:.75rem;padding:4px 12px" onclick="event.stopPropagation();selectTopic('${t.id}')">▶ Open</button>
+          <button class="btn-cancel" style="font-size:.75rem;padding:4px 10px" onclick="event.stopPropagation();editTopic('${t.id}')">✏️ Bewerk</button>
+        </div>
       </div>`).join('');
   }
 
   function showCreateForm() {
+    editingTopicId = null;
+    newTags.a = ['4daagse','nijmeegsevierdaagse','vierdaagse','nijmegen','vierdaagse2025'];
+    newTags.b = ['vierdaagsefeesten','4daagsefeesten'];
+    document.getElementById('topicNameInput').value = '';
+    document.getElementById('groupAName').value     = 'Vierdaagse';
+    document.getElementById('groupBName').value     = 'Feesten';
     document.getElementById('createForm').style.display = 'block';
+    document.querySelector('#createForm .btn-start').textContent = 'Starten';
     renderNewTags('a'); renderNewTags('b');
     document.getElementById('topicNameInput').focus();
   }
-  function hideCreateForm() { document.getElementById('createForm').style.display = 'none'; }
 
   function renderNewTags(grp) {
     const cls = grp === 'b' ? ' b' : '';
@@ -353,13 +363,42 @@
     const name = document.getElementById('topicNameInput').value.trim();
     if (!name) { alert('Geef het onderwerp een naam.'); return; }
     if (!newTags.a.length && !newTags.b.length) { alert('Voeg minimaal één hashtag toe.'); return; }
-    socket.emit('topic:create', {
+    const payload = {
       name,
       groupA: { name: document.getElementById('groupAName').value || 'Groep A', hashtags: [...newTags.a] },
       groupB: { name: document.getElementById('groupBName').value || 'Groep B', hashtags: [...newTags.b] },
-    });
+    };
+    if (editingTopicId) {
+      socket.emit('topic:update', { id: editingTopicId, ...payload });
+      editingTopicId = null;
+    } else {
+      socket.emit('topic:create', payload);
+    }
+    hideCreateForm();
+  }
+  function hideCreateForm() {
+    document.getElementById('createForm').style.display = 'none';
+    document.querySelector('#createForm .btn-start').textContent = 'Starten';
+    editingTopicId = null;
   }
   function selectTopic(id) { socket.emit('topic:select', { id }); }
+
+  let editingTopicId = null;
+  function editTopic(id) {
+    const t = (window._topicList || []).find(x => x.id === id);
+    if (!t) return;
+    editingTopicId = id;
+    newTags.a = [...t.groupA.hashtags];
+    newTags.b = [...t.groupB.hashtags];
+    document.getElementById('topicNameInput').value = t.name;
+    document.getElementById('groupAName').value     = t.groupA.name;
+    document.getElementById('groupBName').value     = t.groupB.name;
+    document.getElementById('createForm').style.display = 'block';
+    // Change button label
+    document.querySelector('#createForm .btn-start').textContent = 'Opslaan';
+    renderNewTags('a'); renderNewTags('b');
+    document.getElementById('topicNameInput').focus();
+  }
   function switchTopic() {
     document.getElementById('launcher').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
@@ -500,7 +539,7 @@
   socket.on('connect',    () => { document.getElementById('dot').classList.remove('off'); });
   socket.on('disconnect', () => { document.getElementById('dot').classList.add('off'); });
 
-  socket.on('topics:list', list => renderTopicGrid(list));
+  socket.on('topics:list', list => { window._topicList = list; renderTopicGrid(list); });
 
   socket.on('topic:active', t => {
     activeTopic = t;
