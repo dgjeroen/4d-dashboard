@@ -714,6 +714,7 @@
     document.getElementById('fB').textContent = t.groupB.name;
     document.getElementById('launcher').style.display = 'none';
     document.getElementById('app').style.display      = 'block';
+    if (allPosts.length) renderPosts();
   });
 
   socket.on('posts:update', posts => {

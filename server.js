@@ -125,9 +125,9 @@ io.on('connection', (socket) => {
 
   // If a topic is already active, send current state immediately
   if (activeTopic) {
-    socket.emit('posts:update',    postsWithStatus());
-    socket.emit('hashtags:update', getHashtags());
     socket.emit('topic:active',    topics.summary(activeTopic));
+    socket.emit('hashtags:update', getHashtags());
+    socket.emit('posts:update',    postsWithStatus());
   }
 
   // ── Create new topic ───────────────────────────────────────────────────────
