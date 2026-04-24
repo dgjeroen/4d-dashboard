@@ -665,11 +665,21 @@
   function renderPosts() {
     const feed = document.getElementById('feed');
     const list = filtered();
+    console.log(`[renderPosts] allPosts=${allPosts.length} filtered=${list.length} showIG=${showIG} showTT=${showTT} group=${activeGroup} hideReviewed=${hideReviewed} required=${requiredTags.size}`);
     if (!list.length) {
-      feed.innerHTML = '<div class="empty"><h2>Geen posts gevonden</h2><p>Pas het filter aan of wacht op de volgende scrape.</p></div>';
+      const reason = allPosts.length === 0 ? 'Nog geen posts binnen.' : `${allPosts.length} posts aanwezig maar verborgen door actieve filters.`;
+      feed.innerHTML = `<div class="empty"><h2>Geen posts gevonden</h2><p>${reason}</p></div>`;
       return;
     }
-    feed.innerHTML = list.map(cardHtml).join('');
+    try {
+      feed.innerHTML = list.map(cardHtml).join('');
+    } catch(e) {
+      console.error('[renderPosts] cardHtml fout:', e);
+      feed.innerHTML = list.map(p => {
+        try { return cardHtml(p); }
+        catch(e2) { return `<div class="card" style="padding:14px;color:var(--red)">⚠️ Render error voor post ${p.id}: ${e2.message}</div>`; }
+      }).join('');
+    }
     list.forEach(p => knownIds.add(p.id));
   }
 
