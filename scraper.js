@@ -127,18 +127,6 @@ async function scrapeInstagram(hashtag) {
     try {
       const data = await res.json();
 
-      // Debug: log top-level keys so we can see the structure
-      if (url.includes('fbsearch/web/top_serp')) {
-        console.log(`[Instagram] media_grid keys: ${Object.keys(data.media_grid || {}).join(', ')}`);
-        const sections = data.media_grid?.sections || [];
-        console.log(`[Instagram] sections count: ${sections.length}`);
-        if (sections[0]) console.log(`[Instagram] section[0] keys: ${Object.keys(sections[0]).join(', ')}`);
-        if (sections[0]?.layout_content) console.log(`[Instagram] layout_content keys: ${Object.keys(sections[0].layout_content).join(', ')}`);
-      } else {
-        console.log(`[Instagram] Keys from ${url.slice(0,80)}: ${Object.keys(data).join(', ')}`);
-        if (data.data) console.log(`[Instagram] data.data keys: ${Object.keys(data.data).join(', ')}`);
-      }
-
       // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
         for (const { media } of (section.layout_content?.medias || [])) {
@@ -156,19 +144,14 @@ async function scrapeInstagram(hashtag) {
         if (node) posts.push(parseInstagramMedia(node));
       }
 
-      // fbsearch top_serp – media items in hashtag results
-      for (const item of (data?.hashtags || [])) {
-        const media = item?.hashtag?.media_bundles?.flatMap(b => b.medias || []) || [];
-        for (const m of media) posts.push(parseInstagramMedia(m));
-      }
-      // top_serp media list
-      for (const item of (data?.medias || [])) {
-        if (item?.media) posts.push(parseInstagramMedia(item.media));
+      // fbsearch top_serp – media_grid.sections[].layout_content.medias[]
+      for (const section of (data.media_grid?.sections || [])) {
+        for (const item of (section.layout_content?.medias || [])) {
+          if (item?.media) posts.push(parseInstagramMedia(item.media));
+        }
       }
 
-      if (posts.length > 0) {
-        console.log(`[Instagram] Parsed ${posts.length} posts so far from ${url.slice(0, 80)}`);
-      }
+      // GraphQL hashtag edges
     } catch { /* non-JSON */ }
   });
 
