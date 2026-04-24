@@ -128,7 +128,16 @@ async function scrapeInstagram(hashtag) {
       const data = await res.json();
 
       // Debug: log top-level keys so we can see the structure
-      console.log(`[Instagram] Keys from ${url.slice(0,80)}: ${Object.keys(data).join(', ')}`);
+      if (url.includes('fbsearch/web/top_serp')) {
+        console.log(`[Instagram] media_grid keys: ${Object.keys(data.media_grid || {}).join(', ')}`);
+        const sections = data.media_grid?.sections || [];
+        console.log(`[Instagram] sections count: ${sections.length}`);
+        if (sections[0]) console.log(`[Instagram] section[0] keys: ${Object.keys(sections[0]).join(', ')}`);
+        if (sections[0]?.layout_content) console.log(`[Instagram] layout_content keys: ${Object.keys(sections[0].layout_content).join(', ')}`);
+      } else {
+        console.log(`[Instagram] Keys from ${url.slice(0,80)}: ${Object.keys(data).join(', ')}`);
+        if (data.data) console.log(`[Instagram] data.data keys: ${Object.keys(data.data).join(', ')}`);
+      }
 
       // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
