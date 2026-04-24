@@ -33,10 +33,35 @@ if (BASE) {
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
+const SESSIONS_DIR   = process.env.SESSIONS_DIR || './sessions';
+const CACHE_FILE     = path.join(SESSIONS_DIR, 'postcache.json');
 const postCache      = new Map();
 let   scrapeRunning  = false;
 let   activeTopic    = null;
 let   lastManualScrape = 0;
+
+// ─── Cache persistence ────────────────────────────────────────────────────────
+function saveCache() {
+  try {
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    const arr = Array.from(postCache.values());
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(arr));
+    console.log(`[Cache] Saved ${arr.length} posts to disk`);
+  } catch (e) {
+    console.error('[Cache] Save failed:', e.message);
+  }
+}
+
+function loadCache() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return;
+    const arr = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    arr.forEach(p => postCache.set(p.id, p));
+    console.log(`[Cache] Loaded ${postCache.size} posts from disk`);
+  } catch (e) {
+    console.error('[Cache] Load failed:', e.message);
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setActiveTopic(topic) {
@@ -98,6 +123,7 @@ async function runScrape() {
       sorted.slice(0, 500).forEach(([k, v]) => postCache.set(k, v));
     }
     console.log(`[Scrape] Done in ${((Date.now()-t0)/1000).toFixed(1)}s – +${added} new, total: ${postCache.size}`);
+    saveCache();
     broadcastAll();
     io.emit('scrape:done');
   } catch (err) {
@@ -134,6 +160,7 @@ io.on('connection', (socket) => {
   socket.on('topic:create', ({ name, groupA, groupB }, cb) => {
     const topic = topics.create(name, groupA, groupB);
     postCache.clear();
+    saveCache();
     setActiveTopic(topic);
     io.emit('topics:list',    topics.list().map(topics.summary));
     io.emit('topic:active',   topics.summary(topic));
@@ -148,7 +175,7 @@ io.on('connection', (socket) => {
     const topic = topics.load(id);
     if (!topic) { if (cb) cb({ ok: false, error: 'Not found' }); return; }
     const sameId = activeTopic?.id === id;
-    if (!sameId) postCache.clear();
+    if (!sameId) { postCache.clear(); saveCache(); }
     setActiveTopic(topic);
     io.emit('topics:list',    topics.list().map(topics.summary));
     io.emit('topic:active',   topics.summary(topic));
@@ -201,6 +228,7 @@ io.on('connection', (socket) => {
       if (!matches) { postCache.delete(id); purged++; }
     }
     if (purged > 0) console.log(`[Hashtags] Purged ${purged} posts after hashtag removal`);
+    if (purged > 0) saveCache();
 
     io.emit('hashtags:update', getHashtags());
     io.emit('posts:update',    postsWithStatus());
@@ -232,10 +260,19 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`[Server] Dashboard listening on :${PORT}`);
+  // Load persisted post cache
+  loadCache();
   // Auto-resume most recent topic
   const existing = topics.list();
   if (existing.length > 0) {
     setActiveTopic(topics.load(existing[0].id));
+    // Remove any cached posts that don't match the active topic's hashtags
+    const tagSet = new Set(getHashtags());
+    let pruned = 0;
+    for (const [id, post] of postCache.entries()) {
+      if (!(post.hashtags || []).some(t => tagSet.has(t))) { postCache.delete(id); pruned++; }
+    }
+    if (pruned > 0) console.log(`[Cache] Pruned ${pruned} posts not matching active topic`);
     setTimeout(runScrape, 2000);
   }
 });
