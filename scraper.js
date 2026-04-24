@@ -28,8 +28,21 @@ let sharedBrowser = null;
 
 async function getBrowser() {
   if (sharedBrowser?.isConnected()) return sharedBrowser;
+
+  // Playwright-extra needs the executablePath when running inside Docker
+  const fs2 = require('fs');
+  const candidates = [
+    '/ms-playwright/chromium-1117/chrome-linux/chrome',
+    '/ms-playwright/chromium-1161/chrome-linux/chrome',
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  ].filter(Boolean);
+  const executablePath = candidates.find(p => fs2.existsSync(p));
+  if (!executablePath) throw new Error('Chromium not found. Candidates: ' + candidates.join(', '));
+  console.log(`[Browser] Using Chromium at: ${executablePath}`);
+
   sharedBrowser = await chromium.launch({
     headless: true,
+    executablePath,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
