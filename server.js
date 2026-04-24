@@ -180,7 +180,18 @@ io.on('connection', (socket) => {
     if (!activeTopic) return;
     activeTopic = topics.updateHashtags(activeTopic.id, hashtags);
     setHashtags(hashtags);
+
+    // Purge posts that no longer match any active hashtag
+    const tagSet = new Set(hashtags);
+    let purged = 0;
+    for (const [id, post] of postCache.entries()) {
+      const matches = (post.hashtags || []).some(t => tagSet.has(t));
+      if (!matches) { postCache.delete(id); purged++; }
+    }
+    if (purged > 0) console.log(`[Hashtags] Purged ${purged} posts after hashtag removal`);
+
     io.emit('hashtags:update', getHashtags());
+    io.emit('posts:update',    postsWithStatus());
     io.emit('topic:active',    topics.summary(activeTopic));
   });
 

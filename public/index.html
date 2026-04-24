@@ -150,8 +150,24 @@
     .hpill.a { background: rgba(108,99,255,.15); color: var(--accent); }
     .hpill.b { background: rgba(245,166,35,.12); color: #f5a623; }
     .hpill.disc { background: rgba(100,100,100,.12); color: var(--muted); }
+    .hpill { cursor: pointer; }
+    .hpill.required { font-weight: 700; box-shadow: 0 0 0 2px currentColor; }
+    .hpill.required.a    { background: var(--accent); color: #fff; }
+    .hpill.required.b    { background: #f5a623; color: #000; }
+    .hpill.required.disc { background: var(--muted); color: #fff; }
     .hpill .hx { cursor: pointer; opacity: .55; }
     .hpill .hx:hover { opacity: 1; color: var(--red); }
+    #reqBar {
+      padding: 3px 14px 5px; background: var(--card); border-bottom: 1px solid var(--border);
+      display: none; flex-wrap: wrap; gap: 4px; align-items: center; font-size: .69rem;
+    }
+    #reqBar.has-req { display: flex; }
+    .req-pill {
+      display: inline-flex; align-items: center; gap: 3px; border-radius: 10px;
+      padding: 1px 8px; background: rgba(239,68,68,.18); color: var(--red);
+      border: 1px solid var(--red); font-weight: 700; cursor: pointer; font-size: .69rem;
+    }
+    .req-pill:hover { background: rgba(239,68,68,.35); }
 
     /* ── Feed ─────────────────────────────────────────────────────────────── */
     #feed {
@@ -281,6 +297,11 @@
     </header>
 
     <div id="hashtagBar"></div>
+    <div id="reqBar">
+      <span style="color:var(--muted);margin-right:4px;white-space:nowrap">🔍 Verplicht:</span>
+      <span id="reqPills"></span>
+      <button class="fbtn" style="margin-left:auto;font-size:.68rem;padding:2px 8px" onclick="clearRequired()">✕ Wis filter</button>
+    </div>
   </div>
 
   <div id="feed"></div>
@@ -295,6 +316,7 @@
   let showTT         = true;
   let sortByLikes    = false;
   let hideReviewed   = false;
+  let requiredTags   = new Set();
   let activeTopic    = null;
   let newTags        = {
     a: ['4daagse','nijmeegsevierdaagse','vierdaagse','nijmegen','vierdaagse2025'],
@@ -413,8 +435,30 @@
       '<span style="color:var(--muted);margin-right:4px;white-space:nowrap;font-size:.7rem">Volgend:</span>' +
       hashtags.map(t => {
         const cls = setA.has(t) ? 'a' : setB.has(t) ? 'b' : 'disc';
-        return `<span class="hpill ${cls}">#${esc(t)}<span class="hx" onclick="toggleHashtag('${t}')">×</span></span>`;
+        const req = requiredTags.has(t) ? ' required' : '';
+        return `<span class="hpill ${cls}${req}" onclick="toggleRequired('${t}')" title="Klik om te filteren op deze tag">#${esc(t)}<span class="hx" onclick="event.stopPropagation();toggleHashtag('${t}')">×</span></span>`;
       }).join('');
+    renderReqBar();
+  }
+  function toggleRequired(tag) {
+    if (requiredTags.has(tag)) requiredTags.delete(tag);
+    else requiredTags.add(tag);
+    renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
+    renderPosts();
+  }
+  function clearRequired() {
+    requiredTags.clear();
+    renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
+    renderPosts();
+  }
+  function renderReqBar() {
+    const bar = document.getElementById('reqBar');
+    if (requiredTags.size === 0) { bar.classList.remove('has-req'); return; }
+    bar.classList.add('has-req');
+    document.getElementById('reqPills').innerHTML =
+      [...requiredTags].map(t =>
+        `<span class="req-pill" onclick="toggleRequired('${t}')">#${esc(t)} ×</span>`
+      ).join('');
   }
   function toggleHashtag(tag) {
     socket.emit('topic:updateHashtags', {
@@ -452,6 +496,10 @@
       if (!showTT && p.platform === 'tiktok')    return false;
       if (activeGroup === 'a' && p.group !== 'a' && p.group !== 'both') return false;
       if (activeGroup === 'b' && p.group !== 'b' && p.group !== 'both') return false;
+      if (requiredTags.size > 0) {
+        const postTags = new Set(p.hashtags || []);
+        if (![...requiredTags].every(t => postTags.has(t))) return false;
+      }
       return true;
     });
     return sortByLikes ? [...posts].sort((a,b)=>b.likes-a.likes) : posts;
