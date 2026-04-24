@@ -82,11 +82,15 @@ async function runScrape() {
     const hashtags = getHashtags();
     console.log(`[Scrape] Starting – ${hashtags.length} hashtags`);
     const newPosts = await getAllPosts(hashtags);
-    let added = 0;
+    const activeTagSet = new Set(hashtags);
+    let added = 0, skipped = 0;
     for (const post of newPosts) {
+      const postTags = post.hashtags || [];
+      if (!postTags.some(t => activeTagSet.has(t))) { skipped++; continue; }
       if (!postCache.has(post.id)) added++;
       postCache.set(post.id, post);
     }
+    if (skipped > 0) console.log(`[Scrape] Skipped ${skipped} posts with no matching active hashtag`);
     if (postCache.size > 500) {
       const sorted = Array.from(postCache.entries())
         .sort((a, b) => b[1].timestamp - a[1].timestamp);
