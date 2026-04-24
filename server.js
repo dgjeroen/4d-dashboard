@@ -68,9 +68,9 @@ function postsWithStatus() {
 
 // ─── Broadcast ────────────────────────────────────────────────────────────────
 function broadcastAll() {
-  io.emit('posts:update',    postsWithStatus());
-  io.emit('hashtags:update', getHashtags());
   if (activeTopic) io.emit('topic:active', topics.summary(activeTopic));
+  io.emit('hashtags:update', getHashtags());
+  io.emit('posts:update',    postsWithStatus());
 }
 
 // ─── Scrape cycle ─────────────────────────────────────────────────────────────

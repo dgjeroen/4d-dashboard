@@ -672,7 +672,9 @@
       return;
     }
     try {
-      feed.innerHTML = list.map(cardHtml).join('');
+      const html = list.map(cardHtml).join('');
+      feed.innerHTML = html;
+      console.log(`[feed] DOM children: ${feed.children.length}, app display: ${document.getElementById('app').style.display}, first post id: ${list[0]?.id}`);
     } catch(e) {
       console.error('[renderPosts] cardHtml fout:', e);
       feed.innerHTML = list.map(p => {
