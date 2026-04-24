@@ -127,6 +127,9 @@ async function scrapeInstagram(hashtag) {
     try {
       const data = await res.json();
 
+      // Debug: log top-level keys so we can see the structure
+      console.log(`[Instagram] Keys from ${url.slice(0,80)}: ${Object.keys(data).join(', ')}`);
+
       // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
         for (const { media } of (section.layout_content?.medias || [])) {
