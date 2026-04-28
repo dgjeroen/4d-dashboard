@@ -9,7 +9,7 @@ const fs         = require('fs');
 const multer     = require('multer');
 
 const { getAllPosts, getIgBlocked, setIgBlocked, reAuthInstagram } = require('./scraper');
-const { getHashtags, setHashtags, updateHashtags, trackRemoval } = require('./hashtags');
+const { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions } = require('./hashtags');
 const topics                               = require('./topics');
 
 const app    = express();
@@ -143,9 +143,10 @@ function postsWithStatus() {
 // ─── Broadcast ────────────────────────────────────────────────────────────────
 function broadcastAll() {
   if (activeTopic) io.emit('topic:active', topics.summary(activeTopic));
-  io.emit('hashtags:update',  getHashtags());
-  io.emit('posts:update',     postsWithStatus());
-  io.emit('instagram:status', { blocked: getIgBlocked() });
+  io.emit('hashtags:update',    getHashtags());
+  io.emit('hashtags:suggestions', getSuggestions());
+  io.emit('posts:update',       postsWithStatus());
+  io.emit('instagram:status',   { blocked: getIgBlocked() });
 }
 
 // ─── Scrape cycle ─────────────────────────────────────────────────────────────
@@ -187,9 +188,8 @@ cron.schedule('*/3 * * * *', runScrape);
 
 cron.schedule('0 * * * *', () => {
   if (!activeTopic) return;
-  const updated = updateHashtags(Array.from(postCache.values()));
-  activeTopic = topics.updateHashtags(activeTopic.id, updated);
-  broadcastAll();
+  updateHashtags(Array.from(postCache.values()));
+  io.emit('hashtags:suggestions', getSuggestions());
 });
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
@@ -202,9 +202,10 @@ io.on('connection', (socket) => {
 
   // If a topic is already active, send current state immediately
   if (activeTopic) {
-    socket.emit('topic:active',    topics.summary(activeTopic));
-    socket.emit('hashtags:update', getHashtags());
-    socket.emit('posts:update',    postsWithStatus());
+    socket.emit('topic:active',       topics.summary(activeTopic));
+    socket.emit('hashtags:update',    getHashtags());
+    socket.emit('hashtags:suggestions', getSuggestions());
+    socket.emit('posts:update',       postsWithStatus());
   }
 
   // ── Create new topic ───────────────────────────────────────────────────────
@@ -284,6 +285,21 @@ io.on('connection', (socket) => {
     io.emit('hashtags:update', getHashtags());
     io.emit('posts:update',    postsWithStatus());
     io.emit('topic:active',    topics.summary(activeTopic));
+  });
+
+  // ── Hashtag suggestion approve / reject ──────────────────────────────────
+  socket.on('hashtag:approve', ({ tag }) => {
+    if (!activeTopic) return;
+    approveSuggestion(tag);
+    activeTopic = topics.updateHashtags(activeTopic.id, getHashtags());
+    io.emit('hashtags:update',      getHashtags());
+    io.emit('hashtags:suggestions', getSuggestions());
+    io.emit('topic:active',         topics.summary(activeTopic));
+  });
+
+  socket.on('hashtag:reject', ({ tag }) => {
+    trackRemoval(tag);
+    io.emit('hashtags:suggestions', getSuggestions());
   });
 
   socket.on('scrape:now', () => {

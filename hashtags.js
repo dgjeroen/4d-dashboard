@@ -3,12 +3,12 @@
 /**
  * Hashtag manager – hashtags come from the active topic, not a hardcoded seed.
  * setHashtags() is called by the server whenever a topic is activated.
- * updateHashtags() discovers contextually relevant co-occurring tags.
+ * getSuggestions() returns candidate tags for the user to approve or reject.
  *
- * A tag is only auto-added when it:
+ * A tag is suggested when it:
  *   1. Is not on the generic-spam blocklist
- *   2. Was not manually removed by the user this session
- *   3. Co-occurs with ≥3 posts AND ≥2 *different* seed tags (context check)
+ *   2. Was not manually removed or rejected by the user
+ *   3. Co-occurs with ≥2 posts that contain at least one seed tag
  */
 
 const BLOCKLIST = new Set([
@@ -22,28 +22,44 @@ const BLOCKLIST = new Set([
   'love','life','happy','cool','wow','amazing','cute',
 ]);
 
-let activeSet  = new Set();
-let removedSet = new Set(); // manually removed – never auto-rediscover
+let activeSet    = new Set();
+let removedSet   = new Set(); // manually removed or rejected – never suggest again
+let suggestions  = new Map(); // tag → { count, seeds: Set<string> }
 
 function setHashtags(tags) {
-  activeSet  = new Set(tags);
-  removedSet = new Set(); // fresh topic → reset removal history
+  activeSet   = new Set(tags);
+  removedSet  = new Set();
+  suggestions = new Map();
 }
 
 function getHashtags() {
   return Array.from(activeSet);
 }
 
-/** Called by server when the user manually removes a hashtag. */
+function getSuggestions() {
+  return Array.from(suggestions.entries())
+    .filter(([tag]) => !activeSet.has(tag) && !removedSet.has(tag))
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 20)
+    .map(([tag, { count }]) => ({ tag, count }));
+}
+
+/** Called by server when the user manually removes or rejects a hashtag. */
 function trackRemoval(tag) {
   removedSet.add(tag);
+  suggestions.delete(tag);
+}
+
+/** Called by server when the user approves a suggestion. */
+function approveSuggestion(tag) {
+  if (!removedSet.has(tag)) activeSet.add(tag);
+  suggestions.delete(tag);
 }
 
 function updateHashtags(posts) {
   if (activeSet.size === 0) return getHashtags();
 
   const seedSet = new Set(activeSet);
-  const coOcc   = new Map(); // tag → { count, seeds: Set<string> }
 
   for (const post of posts) {
     const tags = post.hashtags || [];
@@ -51,35 +67,25 @@ function updateHashtags(posts) {
     if (seedsInPost.length === 0) continue;
 
     for (const tag of tags) {
-      if (seedSet.has(tag))    continue; // already tracked
-      if (tag.length < 4)      continue; // too short
-      if (BLOCKLIST.has(tag))  continue; // generic spam
-      if (removedSet.has(tag)) continue; // manually removed
+      if (seedSet.has(tag))    continue;
+      if (tag.length < 4)      continue;
+      if (BLOCKLIST.has(tag))  continue;
+      if (removedSet.has(tag)) continue;
 
-      if (!coOcc.has(tag)) coOcc.set(tag, { count: 0, seeds: new Set() });
-      const e = coOcc.get(tag);
+      if (!suggestions.has(tag)) suggestions.set(tag, { count: 0, seeds: new Set() });
+      const e = suggestions.get(tag);
       e.count++;
       seedsInPost.forEach(s => e.seeds.add(s));
     }
   }
 
-  for (const [tag, { count, seeds }] of coOcc.entries()) {
-    // Must appear in ≥3 posts AND co-occur with ≥2 different seed tags (context filter)
-    if (count >= 3 && seeds.size >= 2 && !activeSet.has(tag)) {
-      console.log(`[Hashtags] New: #${tag} (posts:${count}, seed-variety:${seeds.size})`);
-      activeSet.add(tag);
-    }
-  }
-
-  // Cap at 30 – keep highest co-occurrence count
-  if (activeSet.size > 30) {
-    const sorted = Array.from(activeSet)
-      .sort((a, b) => (coOcc.get(b)?.count || 0) - (coOcc.get(a)?.count || 0));
-    activeSet = new Set(sorted.slice(0, 30));
-  }
+  // Remove suggestions that are now in activeSet
+  for (const tag of activeSet) suggestions.delete(tag);
 
   console.log(`[Hashtags] Active (${activeSet.size}): ${Array.from(activeSet).join(', ')}`);
+  console.log(`[Hashtags] Suggestions (${getSuggestions().length}): ${getSuggestions().map(s => `#${s.tag}(${s.count})`).join(', ')}`);
+
   return getHashtags();
 }
 
-module.exports = { getHashtags, setHashtags, updateHashtags, trackRemoval };
+module.exports = { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions };
