@@ -133,6 +133,7 @@ async function scrapeInstagram(hashtag) {
 
     try {
       const data = await res.json();
+      const before = posts.length;
 
       // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
@@ -158,7 +159,42 @@ async function scrapeInstagram(hashtag) {
         }
       }
 
-      // GraphQL hashtag edges
+      // Search keyword API – data.results[].media_grid.sections[]
+      for (const result of (data.results || [])) {
+        for (const section of (result.media_grid?.sections || [])) {
+          for (const item of (section.layout_content?.medias || [])) {
+            if (item?.media) posts.push(parseInstagramMedia(item.media));
+          }
+        }
+        // results[].top_media
+        for (const item of (result.top_media?.sections || []).flatMap(s => s.layout_content?.medias || [])) {
+          if (item?.media) posts.push(parseInstagramMedia(item.media));
+        }
+      }
+
+      // Search API – data.hashtags[].media_grid.sections[]
+      for (const ht of (data.hashtags || [])) {
+        for (const section of (ht.media_grid?.sections || [])) {
+          for (const item of (section.layout_content?.medias || [])) {
+            if (item?.media) posts.push(parseInstagramMedia(item.media));
+          }
+        }
+      }
+
+      // XDT search – data.data.xdt_api__v1__fbsearch__topsearch_connection
+      const xdt = data?.data?.xdt_api__v1__fbsearch__topsearch_connection;
+      for (const edge of (xdt?.edges || [])) {
+        const sections = edge?.node?.media_grid?.sections || [];
+        for (const section of sections) {
+          for (const item of (section.layout_content?.medias || [])) {
+            if (item?.media) posts.push(parseInstagramMedia(item.media));
+          }
+        }
+      }
+
+      const added = posts.length - before;
+      if (added > 0) console.log(`[Instagram] +${added} posts from ${url.slice(0, 80)}`);
+      else console.log(`[Instagram] 0 posts from ${url.slice(0, 80)} — keys: ${Object.keys(data).join(',')}`);
     } catch { /* non-JSON */ }
   });
 
