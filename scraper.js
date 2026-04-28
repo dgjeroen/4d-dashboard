@@ -197,24 +197,18 @@ async function scrapeInstagram(hashtag) {
         }
       }
 
-      // xdt_fbsearch__top_serp_graphql – edges[].node.media_grid / hashtags[]
+      // xdt_fbsearch__top_serp_graphql – edges[].node.items[]
       const topSerp = data?.data?.xdt_fbsearch__top_serp_graphql;
       if (topSerp) {
         for (const edge of (topSerp.edges || [])) {
-          const node = edge?.node;
-          if (!node) continue;
-          for (const section of (node.media_grid?.sections || [])) {
-            for (const item of (section.layout_content?.medias || [])) {
-              if (item?.media) posts.push(parseInstagramMedia(item.media));
+          for (const item of (edge?.node?.items || [])) {
+            if (item?.pk) posts.push(parseInstagramMedia(item));
+          }
+          // fallback: media_grid.sections
+          for (const section of (edge?.node?.media_grid?.sections || [])) {
+            for (const m of (section.layout_content?.medias || [])) {
+              if (m?.media) posts.push(parseInstagramMedia(m.media));
             }
-          }
-          for (const htEdge of (node.hashtag?.edge_hashtag_to_media?.edges || [])) {
-            if (htEdge?.node) posts.push(parseInstagramMedia(htEdge.node));
-          }
-        }
-        for (const section of (topSerp.media_grid?.sections || [])) {
-          for (const item of (section.layout_content?.medias || [])) {
-            if (item?.media) posts.push(parseInstagramMedia(item.media));
           }
         }
       }
