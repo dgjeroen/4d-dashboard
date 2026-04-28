@@ -181,11 +181,38 @@ async function scrapeInstagram(hashtag) {
         }
       }
 
-      // XDT search – data.data.xdt_api__v1__fbsearch__topsearch_connection
-      const xdt = data?.data?.xdt_api__v1__fbsearch__topsearch_connection;
-      for (const edge of (xdt?.edges || [])) {
-        const sections = edge?.node?.media_grid?.sections || [];
-        for (const section of sections) {
+      // XDTTagInfo – fetch__XDTTagInfo.edge_hashtag_to_media.edges[]
+      const tagInfo = data?.data?.fetch__XDTTagInfo;
+      if (tagInfo) {
+        for (const edge of (tagInfo.edge_hashtag_to_media?.edges || [])) {
+          if (edge?.node) posts.push(parseInstagramMedia(edge.node));
+        }
+        for (const edge of (tagInfo.edge_hashtag_to_top_posts?.edges || [])) {
+          if (edge?.node) posts.push(parseInstagramMedia(edge.node));
+        }
+        for (const section of (tagInfo.media_grid?.sections || [])) {
+          for (const item of (section.layout_content?.medias || [])) {
+            if (item?.media) posts.push(parseInstagramMedia(item.media));
+          }
+        }
+      }
+
+      // xdt_fbsearch__top_serp_graphql – edges[].node.media_grid / hashtags[]
+      const topSerp = data?.data?.xdt_fbsearch__top_serp_graphql;
+      if (topSerp) {
+        for (const edge of (topSerp.edges || [])) {
+          const node = edge?.node;
+          if (!node) continue;
+          for (const section of (node.media_grid?.sections || [])) {
+            for (const item of (section.layout_content?.medias || [])) {
+              if (item?.media) posts.push(parseInstagramMedia(item.media));
+            }
+          }
+          for (const htEdge of (node.hashtag?.edge_hashtag_to_media?.edges || [])) {
+            if (htEdge?.node) posts.push(parseInstagramMedia(htEdge.node));
+          }
+        }
+        for (const section of (topSerp.media_grid?.sections || [])) {
           for (const item of (section.layout_content?.medias || [])) {
             if (item?.media) posts.push(parseInstagramMedia(item.media));
           }
