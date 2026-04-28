@@ -223,7 +223,20 @@ async function scrapeInstagram(hashtag) {
       if (added > 0) console.log(`[Instagram] +${added} posts from ${url.slice(0, 80)}`);
       else {
         const dataKeys = data?.data ? Object.keys(data.data).join(',') : 'null';
-        console.log(`[Instagram] 0 posts from ${url.slice(0, 80)} — data.data keys: ${dataKeys}`);
+        if (data?.data?.fetch__XDTTagInfo) {
+          console.log(`[Instagram] fetch__XDTTagInfo keys: ${Object.keys(data.data.fetch__XDTTagInfo).join(',')}`);
+          const tagInfo = data.data.fetch__XDTTagInfo;
+          if (tagInfo.edge_hashtag_to_media) console.log(`[Instagram] edge_hashtag_to_media edges: ${tagInfo.edge_hashtag_to_media?.edges?.length}`);
+          if (tagInfo.media_grid) console.log(`[Instagram] media_grid sections: ${tagInfo.media_grid?.sections?.length}`);
+          // dump eerste 300 chars
+          console.log(`[Instagram] XDTTagInfo sample: ${JSON.stringify(tagInfo).slice(0, 300)}`);
+        }
+        if (data?.data?.xdt_fbsearch__top_serp_graphql) {
+          const serp = data.data.xdt_fbsearch__top_serp_graphql;
+          console.log(`[Instagram] xdt_fbsearch keys: ${Object.keys(serp).join(',')}`);
+          console.log(`[Instagram] xdt_fbsearch sample: ${JSON.stringify(serp).slice(0, 300)}`);
+        }
+        console.log(`[Instagram] 0 posts — data.data keys: ${dataKeys}`);
       }
     } catch { /* non-JSON */ }
   });
