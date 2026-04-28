@@ -23,6 +23,10 @@ const SESSIONS_DIR = './sessions';
 const TIMEOUT      = 30_000;
 
 let sharedBrowser = null;
+let igBlocked     = false;
+
+function getIgBlocked()  { return igBlocked; }
+function setIgBlocked(v) { igBlocked = v; }
 
 // ─── Browser / context management ────────────────────────────────────────────
 
@@ -160,6 +164,10 @@ async function scrapeInstagram(hashtag) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
     const finalUrl = page.url();
     console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
+    if (finalUrl.includes('/challenge/') || finalUrl.includes('/accounts/login')) {
+      console.warn(`[Instagram] Geblokkeerd voor #${hashtag}`);
+      igBlocked = true;
+    }
     await page.waitForTimeout(5_000);
     await saveSession(ctx, 'instagram');
   } catch (err) {
@@ -262,4 +270,13 @@ async function getAllPosts(hashtags) {
   });
 }
 
-module.exports = { getAllPosts };
+async function reAuthInstagram() {
+  if (sharedBrowser) {
+    try { await sharedBrowser.close(); } catch {}
+    sharedBrowser = null;
+  }
+  igBlocked = false;
+  console.log('[Instagram] Browser herstart na sessie-update');
+}
+
+module.exports = { getAllPosts, getIgBlocked, setIgBlocked, reAuthInstagram };

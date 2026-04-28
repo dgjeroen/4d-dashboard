@@ -6,8 +6,9 @@ const { Server } = require('socket.io');
 const cron       = require('node-cron');
 const path       = require('path');
 const fs         = require('fs');
+const multer     = require('multer');
 
-const { getAllPosts }                       = require('./scraper');
+const { getAllPosts, getIgBlocked, setIgBlocked, reAuthInstagram } = require('./scraper');
 const { getHashtags, setHashtags, updateHashtags, trackRemoval } = require('./hashtags');
 const topics                               = require('./topics');
 
@@ -18,6 +19,54 @@ const BASE = (process.env.BASE_PATH || '').replace(/\/+$/, '');
 
 const io = new Server(server, {
   path: `${BASE}/socket.io`,
+});
+
+// ─── Instagram session upload ─────────────────────────────────────────────────────────────
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+
+app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: 'Geen bestand' });
+    const raw  = req.file.buffer.toString('utf8');
+    const json = JSON.parse(raw);
+
+    // Accepteer zowel Playwright storageState als Cookie-Editor export
+    let storageState;
+    if (json.cookies !== undefined && json.origins !== undefined) {
+      storageState = json; // al een Playwright storageState
+    } else if (Array.isArray(json)) {
+      // Cookie-Editor export → omzetten naar Playwright storageState
+      storageState = {
+        cookies: json.map(c => ({
+          name:     c.name,
+          value:    c.value,
+          domain:   c.domain        || '.instagram.com',
+          path:     c.path          || '/',
+          expires:  c.expirationDate || c.expires || -1,
+          httpOnly: c.httpOnly      || false,
+          secure:   c.secure        || false,
+          sameSite: c.sameSite      || 'Lax',
+        })),
+        origins: [],
+      };
+    } else {
+      return res.status(400).json({ ok: false, error: 'Ongeldig formaat. Upload een Playwright storageState of Cookie-Editor JSON.' });
+    }
+
+    const sessDir = process.env.SESSIONS_DIR || './sessions';
+    fs.mkdirSync(sessDir, { recursive: true });
+    fs.writeFileSync(path.join(sessDir, 'instagram.json'), JSON.stringify(storageState, null, 2));
+
+    setIgBlocked(false);
+    io.emit('instagram:status', { blocked: false });
+    console.log('[Instagram] Sessie bijgewerkt via upload');
+
+    await reAuthInstagram();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Instagram] Upload fout:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 if (BASE) {
@@ -94,8 +143,9 @@ function postsWithStatus() {
 // ─── Broadcast ────────────────────────────────────────────────────────────────
 function broadcastAll() {
   if (activeTopic) io.emit('topic:active', topics.summary(activeTopic));
-  io.emit('hashtags:update', getHashtags());
-  io.emit('posts:update',    postsWithStatus());
+  io.emit('hashtags:update',  getHashtags());
+  io.emit('posts:update',     postsWithStatus());
+  io.emit('instagram:status', { blocked: getIgBlocked() });
 }
 
 // ─── Scrape cycle ─────────────────────────────────────────────────────────────
@@ -147,7 +197,8 @@ io.on('connection', (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
   // Always send topic list so launcher can populate
-  socket.emit('topics:list', topics.list().map(topics.summary));
+  socket.emit('topics:list',    topics.list().map(topics.summary));
+  socket.emit('instagram:status', { blocked: getIgBlocked() });
 
   // If a topic is already active, send current state immediately
   if (activeTopic) {

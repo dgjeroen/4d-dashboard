@@ -316,10 +316,40 @@
       grid-column: 1/-1; text-align: center; padding: 70px 20px; color: var(--muted);
     }
     .empty h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+
+    /* ── Instagram blocked banner ───────────────────────────────────────────────────── */
+    #igBanner {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: #450a0a; border-bottom: 2px solid var(--red);
+      padding: 9px 16px; align-items: center; gap: 12px;
+      font-size: .82rem; flex-wrap: wrap;
+    }
+    #igBanner.visible { display: flex; }
+    #igBanner strong { color: #fca5a5; }
+    .ig-upload-label {
+      background: #e1306c; color: #fff; padding: 6px 14px; border-radius: 8px;
+      cursor: pointer; font-weight: 700; font-size: .78rem;
+      transition: filter .15s; white-space: nowrap;
+    }
+    .ig-upload-label:hover { filter: brightness(1.15); }
+    .ig-upload-label input[type=file] { display: none; }
+    #igUploadStatus { color: #fde68a; font-size: .78rem; }
   </style>
 </head>
 <body>
-
+<!-- ── Instagram blocked banner ──────────────────────────────────────────────── -->
+<div id="igBanner">
+  <strong>⚠️ Instagram geblokkeerd</strong>
+  <span>De sessie is verlopen of gedetecteerd als bot. Upload nieuwe cookies om door te gaan.</span>
+  <label class="ig-upload-label" style="margin-left:auto">
+    📂 Sessie uploaden
+    <input type="file" accept=".json" onchange="uploadIgSession(this)">
+  </label>
+  <span id="igUploadStatus"></span>
+  <a href="https://cookie-editor.com" target="_blank" rel="noopener"
+     style="color:#fca5a5;font-size:.75rem;white-space:nowrap">Hoe exporteer ik cookies? →</a>
+</div>
 <!-- ── Launcher ──────────────────────────────────────────────────────────── -->
 <div id="launcher">
   <h1>🏆 Social Dashboard</h1>
@@ -770,6 +800,39 @@
     const btn = document.getElementById('refreshBtn');
     btn.classList.remove('loading');
     btn.textContent = '↻ Vernieuwen';
+  });
+
+  // ── Instagram session upload ───────────────────────────────────────────────────
+  async function uploadIgSession(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById('igUploadStatus');
+    statusEl.textContent = '⏳ Uploaden…';
+    const formData = new FormData();
+    formData.append('session', file);
+    try {
+      const res  = await fetch(`${window.__BASE || ''}/instagram/upload-session`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.ok) {
+        statusEl.textContent = '✅ Sessie bijgewerkt!';
+        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+      } else {
+        statusEl.textContent = `❌ ${data.error}`;
+      }
+    } catch (err) {
+      statusEl.textContent = `❌ ${err.message}`;
+    }
+    input.value = ''; // reset zodat je hetzelfde bestand opnieuw kunt uploaden
+  }
+
+  socket.on('instagram:status', ({ blocked }) => {
+    const banner = document.getElementById('igBanner');
+    if (blocked) {
+      banner.classList.add('visible');
+    } else {
+      banner.classList.remove('visible');
+      document.getElementById('igUploadStatus').textContent = '';
+    }
   });
 </script>
 </body>
