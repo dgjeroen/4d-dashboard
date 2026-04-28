@@ -124,7 +124,10 @@ async function scrapeInstagram(hashtag) {
       url.includes('/api/v1/tags/') ||
       url.includes('graphql/query') ||
       url.includes('/api/graphql') ||
-      url.includes('fbsearch/web/top_serp');
+      url.includes('fbsearch/web/top_serp') ||
+      url.includes('/api/v1/search/') ||
+      url.includes('web/search/') ||
+      url.includes('bloks/apps/com.instagram.search');
 
     if (!isRelevant) return;
 
@@ -167,6 +170,14 @@ async function scrapeInstagram(hashtag) {
     if (finalUrl.includes('/challenge/') || finalUrl.includes('/accounts/login')) {
       console.warn(`[Instagram] Geblokkeerd voor #${hashtag}`);
       igBlocked = true;
+    }
+    // Als doorgestuurd naar zoekpagina: ook de zoek-URL laden voor betere API coverage
+    if (finalUrl.includes('/explore/search/') || finalUrl.includes('/explore/search/keyword')) {
+      await page.goto(
+        `https://www.instagram.com/explore/search/keyword/?q=%23${encodeURIComponent(hashtag)}`,
+        { waitUntil: 'domcontentloaded', timeout: TIMEOUT }
+      );
+      console.log(`[Instagram] #${hashtag} zoekpagina geladen`);
     }
     await page.waitForTimeout(5_000);
     await saveSession(ctx, 'instagram');
