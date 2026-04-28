@@ -194,7 +194,10 @@ async function scrapeInstagram(hashtag) {
 
       const added = posts.length - before;
       if (added > 0) console.log(`[Instagram] +${added} posts from ${url.slice(0, 80)}`);
-      else console.log(`[Instagram] 0 posts from ${url.slice(0, 80)} — keys: ${Object.keys(data).join(',')}`);
+      else {
+        const dataKeys = data?.data ? Object.keys(data.data).join(',') : 'null';
+        console.log(`[Instagram] 0 posts from ${url.slice(0, 80)} — data.data keys: ${dataKeys}`);
+      }
     } catch { /* non-JSON */ }
   });
 
