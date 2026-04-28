@@ -23,6 +23,7 @@
       --amber-bg: #2e1f00;
       --ig:       #e1306c;
       --tt:       #ff2d55;
+      --bsky:     #0085ff;
       --green:    #22d07a;
       --green-bg: #0a2a1a;
       --red:      #f05252;
@@ -181,6 +182,7 @@
     .fbtn.gb.active { background: var(--amber); border-color: var(--amber); color: #fff; }
     .fbtn.ig.active { background: var(--ig);    border-color: var(--ig);    color: #fff; }
     .fbtn.tt.active { background: var(--tt);    border-color: var(--tt);    color: #fff; }
+    .fbtn.bsky.active { background: var(--bsky);  border-color: var(--bsky);  color: #fff; }
     .fbtn.refresh { margin-left: auto; }
     .fbtn.refresh.loading { opacity: .45; cursor: not-allowed; }
     .sep { color: var(--border-hi); font-size: .9rem; user-select: none; }
@@ -302,8 +304,9 @@
       font-size: .62rem; font-weight: 800; padding: 2px 8px; border-radius: 5px;
       text-transform: uppercase; letter-spacing: .04em;
     }
-    .badge.instagram { background: var(--ig); color: #fff; }
-    .badge.tiktok    { background: var(--tt); color: #fff; }
+    .badge.instagram { background: var(--ig);   color: #fff; }
+    .badge.tiktok    { background: var(--tt);   color: #fff; }
+    .badge.bluesky   { background: var(--bsky); color: #fff; }
     .badge.ga { background: var(--pill-a-bg); color: var(--pill-a-txt); }
     .badge.gb { background: var(--pill-b-bg); color: var(--pill-b-txt); }
     .card-author {
@@ -431,6 +434,7 @@
       <!-- Platform toggles (independent) -->
       <button class="fbtn ig active" id="fIG" onclick="togglePlatform('instagram')">Instagram</button>
       <button class="fbtn tt active" id="fTT" onclick="togglePlatform('tiktok')">TikTok</button>
+      <button class="fbtn bsky active" id="fBsky" onclick="togglePlatform('bluesky')">Bluesky</button>
       <span class="sep">|</span>
 
       <!-- Sort -->
@@ -628,8 +632,9 @@
     renderPosts();
   }
   function togglePlatform(p) {
-    if (p === 'instagram') { showIG = !showIG; document.getElementById('fIG').classList.toggle('active', showIG); }
-    else                   { showTT = !showTT; document.getElementById('fTT').classList.toggle('active', showTT); }
+    if (p === 'instagram') { showIG   = !showIG;   document.getElementById('fIG').classList.toggle('active', showIG); }
+    else if (p === 'tiktok') { showTT = !showTT;   document.getElementById('fTT').classList.toggle('active', showTT); }
+    else                   { showBsky = !showBsky; document.getElementById('fBsky').classList.toggle('active', showBsky); }
     renderPosts();
   }
   function toggleSort() {
@@ -648,6 +653,7 @@
       if (hideReviewed && p.reviewStatus) return false;
       if (!showIG && p.platform === 'instagram') return false;
       if (!showTT && p.platform === 'tiktok')    return false;
+      if (!showBsky && p.platform === 'bluesky') return false;
       if (activeGroup === 'a' && p.group !== 'a' && p.group !== 'both') return false;
       if (activeGroup === 'b' && p.group !== 'b' && p.group !== 'both') return false;
       if (requiredTags.size > 0) {

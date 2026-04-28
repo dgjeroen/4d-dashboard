@@ -304,6 +304,65 @@ async function scrapeTikTok(hashtag) {
   return posts;
 }
 
+// ─── Bluesky ─────────────────────────────────────────────────────────────────
+
+const https = require('https');
+
+function bskyGet(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'Accept': 'application/json' } }, res => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
+function parseBskyPost(post) {
+  const author  = post.author || {};
+  const record  = post.record || {};
+  const embed   = post.embed  || {};
+  const imageUrl =
+    embed?.thumbnail?.fullsize ||
+    embed?.images?.[0]?.fullsize ||
+    embed?.media?.images?.[0]?.fullsize ||
+    '';
+  const uri = post.uri || '';
+  // at://did:plc:xxx/app.bsky.feed.post/rkey → https://bsky.app/profile/handle/post/rkey
+  const rkey = uri.split('/').pop();
+  return {
+    id:        `bsky_${post.cid || rkey}`,
+    platform:  'bluesky',
+    author:    author.handle || 'unknown',
+    authorUrl: `https://bsky.app/profile/${author.handle}`,
+    caption:   record.text || '',
+    imageUrl,
+    postUrl:   `https://bsky.app/profile/${author.handle}/post/${rkey}`,
+    likes:     post.likeCount || 0,
+    timestamp: new Date(record.createdAt || 0).getTime(),
+    hashtags:  extractHashtags(record.text),
+  };
+}
+
+async function scrapeBluesky(hashtag) {
+  const posts = [];
+  try {
+    const q   = encodeURIComponent(`#${hashtag}`);
+    const url = `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${q}&limit=25&sort=latest`;
+    const data = await bskyGet(url);
+    for (const post of (data.posts || [])) {
+      posts.push(parseBskyPost(post));
+    }
+    console.log(`[Bluesky] #${hashtag} → ${posts.length} posts`);
+  } catch (err) {
+    console.warn(`[Bluesky] #${hashtag}: ${err.message}`);
+  }
+  return posts;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 async function getAllPosts(hashtags) {
@@ -311,18 +370,22 @@ async function getAllPosts(hashtags) {
 
   for (const tag of hashtags) {
     const tagLower = tag.toLowerCase();
-    const [ig, tt] = await Promise.allSettled([
+    const [ig, tt, bsky] = await Promise.allSettled([
       scrapeInstagram(tag),
       scrapeTikTok(tag),
+      scrapeBluesky(tag),
     ]);
     if (ig.status === 'fulfilled') {
-      // Ensure the queried hashtag is always present, even if absent from caption
       ig.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
       results.push(...ig.value);
     }
     if (tt.status === 'fulfilled') {
       tt.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
       results.push(...tt.value);
+    }
+    if (bsky.status === 'fulfilled') {
+      bsky.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
+      results.push(...bsky.value);
     }
 
     // Brief pause between hashtags to reduce rate-limit risk
