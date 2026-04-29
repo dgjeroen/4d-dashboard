@@ -133,6 +133,12 @@ async function scrapeInstagram(hashtag) {
       url.includes('web/search/') ||
       url.includes('bloks/apps/com.instagram.search');
 
+    // Log alle instagram JSON-responses om de juiste URL te vinden
+    const ct = res.headers()['content-type'] || '';
+    if (ct.includes('json')) {
+      console.log(`[IG-URL] ${res.status()} ${url.slice(0, 120)}`);
+    }
+
     if (!isRelevant) return;
 
     try {
