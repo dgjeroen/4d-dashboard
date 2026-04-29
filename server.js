@@ -329,7 +329,6 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`[Server] Dashboard listening on :${PORT}`);
-  console.log(`[Env] BSKY_IDENTIFIER=${process.env.BSKY_IDENTIFIER || '(niet ingesteld)'} BSKY_APP_PASSWORD=${process.env.BSKY_APP_PASSWORD ? '(aanwezig)' : '(niet ingesteld)'}`);
   // Load persisted post cache
   loadCache();
   // Auto-resume most recent topic

@@ -383,9 +383,24 @@ function parseBskyPost(post) {
   const record  = post.record || {};
   const embed   = post.embed  || {};
   const imageUrl =
+    // video thumbnail
     embed?.thumbnail?.fullsize ||
+    embed?.thumbnail?.thumb ||
+    // images embed
     embed?.images?.[0]?.fullsize ||
+    embed?.images?.[0]?.thumb ||
+    // nested media (recordWithMedia)
     embed?.media?.images?.[0]?.fullsize ||
+    embed?.media?.images?.[0]?.thumb ||
+    // video in recordWithMedia
+    embed?.media?.thumbnail?.fullsize ||
+    embed?.media?.thumbnail?.thumb ||
+    // external link preview
+    embed?.external?.thumb?.fullsize ||
+    embed?.external?.thumb ||
+    // record embed with thumbnail
+    embed?.record?.embeds?.[0]?.thumbnail?.fullsize ||
+    embed?.record?.embeds?.[0]?.images?.[0]?.fullsize ||
     '';
   const uri  = post.uri || '';
   const rkey = uri.split('/').pop();
