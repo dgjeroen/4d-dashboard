@@ -11,7 +11,7 @@ const multer     = require('multer');
 const { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram } = require('./scraper');
 const { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions } = require('./hashtags');
 const topics = require('./topics');
-const { addHashtagToGroup } = topics;
+const { addHashtagToGroup, addCombo, removeCombo } = topics;
 
 const app    = express();
 const server = http.createServer(app);
@@ -201,12 +201,8 @@ async function runBskyScrape() {
   if (bskyRunning || !activeTopic) return;
   bskyRunning = true;
   try {
-    // Bouw A×B combinaties voor gecombineerde Bluesky-zoekopdrachten (max 10)
-    const gA = activeTopic.groupA?.hashtags || [];
-    const gB = activeTopic.groupB?.hashtags || [];
-    const combos = [];
-    for (const a of gA) for (const b of gB) combos.push([a, b]);
-    const posts = await getBskyPosts(getHashtags(), combos.slice(0, 10));
+    const combos = (activeTopic.combos || []).map(c => [c.a, c.b]);
+    const posts = await getBskyPosts(getHashtags(), combos);
     await ingestPosts(posts, 'bluesky');
   } catch (err) { console.error('[Scrape:bluesky]', err.message); }
   finally { bskyRunning = false; }
@@ -340,6 +336,19 @@ io.on('connection', (socket) => {
   socket.on('hashtag:reject', ({ tag }) => {
     trackRemoval(tag);
     io.emit('hashtags:suggestions', getSuggestions());
+  });
+
+  // ── Combinaties beheren ────────────────────────────────────────────────────
+  socket.on('combo:add', ({ a, b }) => {
+    if (!activeTopic || !a || !b) return;
+    activeTopic = addCombo(activeTopic.id, a, b);
+    io.emit('topic:active', topics.summary(activeTopic));
+  });
+
+  socket.on('combo:remove', ({ a, b }) => {
+    if (!activeTopic) return;
+    activeTopic = removeCombo(activeTopic.id, a, b);
+    io.emit('topic:active', topics.summary(activeTopic));
   });
 
   // Vernieuwen-knop: alleen TikTok + Bluesky (Instagram scrapet automatisch om blokkade te voorkomen)

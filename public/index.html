@@ -225,6 +225,18 @@
       background: var(--bg); border-radius: 4px; padding: 0 4px;
     }
     .combo-pill.active .combo-count { color: rgba(255,255,255,.8); background: rgba(0,0,0,.15); }
+    .combo-rm {
+      cursor: pointer; color: var(--muted); font-size: .8rem; line-height: 1;
+      padding: 0 2px; transition: color .1s; margin-left: 2px;
+    }
+    .combo-rm:hover { color: var(--red); }
+    .combo-add {
+      border: 1px dashed var(--border); border-radius: 5px; background: transparent;
+      color: var(--muted); cursor: pointer; font-size: .9rem; line-height: 1;
+      padding: 2px 8px; transition: all .12s;
+    }
+    .combo-add:hover { border-color: var(--accent); color: var(--accent); }
+    #comboBar { display: flex; }
 
     /* Hashtag bar */
     #hashtagBar {
@@ -497,8 +509,9 @@
       <button class="sp-dismiss-all" id="dismissAllBtn" onclick="dismissAllSuggestions()" title="Alle suggesties afwijzen">Alles afwijzen</button>
     </div>
     <div id="comboBar">
-      <span class="combo-label">🔗 Combinaties</span>
+      <span class="combo-label">🔗 AND-filters</span>
       <span id="comboPills"></span>
+      <button class="combo-add" onclick="openAddComboDialog()" title="Nieuwe combinatie toevoegen">+</button>
     </div>
   </div>
 
@@ -782,7 +795,7 @@
     if (!list.length) {
       const reason = allPosts.length === 0 ? 'Nog geen posts binnen.' : `${allPosts.length} posts aanwezig maar verborgen door actieve filters.`;
       feed.innerHTML = `<div class="empty"><h2>Geen posts gevonden</h2><p>${reason}</p></div>`;
-      computeAndRenderCombos();
+      renderCombos();
       return;
     }
     try {
@@ -797,7 +810,7 @@
       }).join('');
     }
     list.forEach(p => knownIds.add(p.id));
-    computeAndRenderCombos();
+    renderCombos();
   }
 
   function computeAndRenderCombos() {
@@ -837,15 +850,6 @@
     renderReqBar();
     renderPosts();
   }
-    } catch(e) {
-      console.error('[renderPosts] cardHtml fout:', e);
-      feed.innerHTML = list.map(p => {
-        try { return cardHtml(p); }
-        catch(e2) { return `<div class="card" style="padding:14px;color:var(--red)">⚠️ Render error voor post ${p.id}: ${e2.message}</div>`; }
-      }).join('');
-    }
-    list.forEach(p => knownIds.add(p.id));
-  }
 
   // ── Theme toggle ───────────────────────────────────────────────────────────
   function toggleTheme() {
@@ -878,6 +882,7 @@
     document.getElementById('fB').textContent = t.groupB.name;
     document.getElementById('launcher').style.display = 'none';
     document.getElementById('app').style.display      = 'block';
+    renderCombos();
     if (allPosts.length) renderPosts();
   });
 

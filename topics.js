@@ -26,6 +26,7 @@ function _normalize(t) {
   if (!t.hashtags || !t.hashtags.length) {
     t.hashtags = [...new Set([...(t.groupA.hashtags||[]), ...(t.groupB.hashtags||[])])];
   }
+  if (!t.combos) t.combos = [];
   return t;
 }
 
@@ -56,7 +57,7 @@ function create(name, groupA, groupB) {
   const gA = { name: groupA?.name || DEFAULT_GROUP_A.name, hashtags: groupA?.hashtags || [...DEFAULT_GROUP_A.hashtags] };
   const gB = { name: groupB?.name || DEFAULT_GROUP_B.name, hashtags: groupB?.hashtags || [...DEFAULT_GROUP_B.hashtags] };
   const allHashtags = [...new Set([...gA.hashtags, ...gB.hashtags])];
-  return save({ id, name, groupA: gA, groupB: gB, hashtags: allHashtags, reviewedIds: {}, createdAt: Date.now(), lastActiveAt: Date.now() });
+  return save({ id, name, groupA: gA, groupB: gB, hashtags: allHashtags, combos: [], reviewedIds: {}, createdAt: Date.now(), lastActiveAt: Date.now() });
 }
 
 function markPost(topicId, postId, status) {
@@ -96,6 +97,22 @@ function update(topicId, { name, groupA, groupB }) {
   return save(t);
 }
 
+function addCombo(topicId, a, b) {
+  const t = load(topicId);
+  if (!t) return null;
+  if (!t.combos) t.combos = [];
+  const exists = t.combos.some(c => c.a === a && c.b === b);
+  if (!exists) t.combos.push({ a, b });
+  return save(t);
+}
+
+function removeCombo(topicId, a, b) {
+  const t = load(topicId);
+  if (!t) return null;
+  t.combos = (t.combos || []).filter(c => !(c.a === a && c.b === b));
+  return save(t);
+}
+
 function summary(t) {
   return {
     id:            t.id,
@@ -103,10 +120,11 @@ function summary(t) {
     groupA:        { name: t.groupA?.name || 'Groep A', hashtags: t.groupA?.hashtags || [] },
     groupB:        { name: t.groupB?.name || 'Groep B', hashtags: t.groupB?.hashtags || [] },
     hashtags:      t.hashtags || [],
+    combos:        t.combos || [],
     reviewedCount: Object.keys(t.reviewedIds || {}).length,
     createdAt:     t.createdAt,
     lastActiveAt:  t.lastActiveAt,
   };
 }
 
-module.exports = { list, load, save, create, update, markPost, updateHashtags, addHashtagToGroup, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };
+module.exports = { list, load, save, create, update, markPost, updateHashtags, addHashtagToGroup, addCombo, removeCombo, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };
