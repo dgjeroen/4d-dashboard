@@ -813,32 +813,19 @@
     renderCombos();
   }
 
-  function computeAndRenderCombos() {
-    const gA  = activeTopic?.groupA?.hashtags || [];
-    const gB  = activeTopic?.groupB?.hashtags || [];
-    const bar = document.getElementById('comboBar');
-    if (!gA.length || !gB.length) { bar.style.display = 'none'; return; }
-    const combos = [];
-    for (const a of gA) {
-      for (const b of gB) {
-        const count = allPosts.filter(p => {
-          const tags = new Set(p.hashtags || []);
-          return tags.has(a) && tags.has(b);
-        }).length;
-        if (count > 0) combos.push({ a, b, count });
-      }
-    }
-    combos.sort((x, y) => y.count - x.count);
-    if (!combos.length) { bar.style.display = 'none'; return; }
-    bar.style.display = 'flex';
-    document.getElementById('comboPills').innerHTML = combos.slice(0, 12).map(c => {
-      const isActive = requiredTags.has(c.a) && requiredTags.has(c.b);
-      return `<span class="combo-pill${isActive ? ' active' : ''}" onclick="applyCombo('${esc(c.a)}','${esc(c.b)}')" title="Toon posts met #${esc(c.a)} én #${esc(c.b)}">#${esc(c.a)} + #${esc(c.b)} <span class="combo-count">${c.count}</span></span>`;
+  function renderCombos() {
+    const combos = activeTopic?.combos || [];
+    const pills  = document.getElementById('comboPills');
+    if (!combos.length) { pills.innerHTML = ''; return; }
+    pills.innerHTML = combos.map(c => {
+      const isActive = requiredTags.has(c.a) && requiredTags.has(c.b) && requiredTags.size === 2;
+      const count    = allPosts.filter(p => { const t = new Set(p.hashtags||[]); return t.has(c.a) && t.has(c.b); }).length;
+      const countEl  = count ? ` <span class="combo-count">${count}</span>` : '';
+      return `<span class="combo-pill${isActive?' active':''}" onclick="applyCombo('${esc(c.a)}','${esc(c.b)}')" title="Filter: #${esc(c.a)} én #${esc(c.b)}">#${esc(c.a)} + #${esc(c.b)}${countEl}<span class="combo-rm" onclick="event.stopPropagation();removeCombo('${esc(c.a)}','${esc(c.b)}')" title="Verwijder">✗</span></span>`;
     }).join('');
   }
 
   function applyCombo(a, b) {
-    // Toggle: als deze combo al actief is, wis filter
     if (requiredTags.has(a) && requiredTags.has(b) && requiredTags.size === 2) {
       requiredTags.clear();
     } else {
@@ -848,7 +835,49 @@
     }
     renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
     renderReqBar();
+    renderCombos();
     renderPosts();
+  }
+
+  function removeCombo(a, b) {
+    if (requiredTags.has(a) && requiredTags.has(b)) {
+      requiredTags.clear();
+      renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
+      renderReqBar();
+    }
+    socket.emit('combo:remove', { a, b });
+  }
+
+  function openAddComboDialog() {
+    if (!activeTopic) return;
+    const tags   = activeTopic.hashtags || [];
+    const listId = '__comboDatalist';
+    const opts   = tags.map(t => `<option value="${esc(t)}">`).join('');
+    const d = document.createElement('dialog');
+    d.style.cssText = 'border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);padding:20px 24px;min-width:280px;';
+    d.innerHTML = `
+      <p style="margin:0 0 8px;font-size:.9rem;font-weight:700;">Nieuwe AND-combinatie</p>
+      <p style="margin:0 0 12px;font-size:.75rem;color:var(--muted);">Alleen posts met <em>beide</em> tags. De losse tags worden niet los toegevoegd.</p>
+      <datalist id="${listId}">${opts}</datalist>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+        <input id="__combA" list="${listId}" placeholder="bijv. nijmegen" autocomplete="off" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.85rem;">
+        <span style="font-weight:700;color:var(--muted)">+</span>
+        <input id="__combB" list="${listId}" placeholder="bijv. wandelen" autocomplete="off" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.85rem;">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="__combOk" style="padding:7px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:700;">Toevoegen</button>
+        <button id="__combCancel" style="padding:7px 14px;border-radius:8px;border:none;background:transparent;color:var(--muted);cursor:pointer;">Annuleren</button>
+      </div>`;
+    document.body.appendChild(d);
+    d.showModal();
+    d.querySelector('#__combOk').onclick = () => {
+      const a = d.querySelector('#__combA').value.trim().replace(/^#/,'').toLowerCase();
+      const b = d.querySelector('#__combB').value.trim().replace(/^#/,'').toLowerCase();
+      d.close(); d.remove();
+      if (a && b && a !== b) socket.emit('combo:add', { a, b });
+    };
+    d.querySelector('#__combCancel').onclick = () => { d.close(); d.remove(); };
+    d.querySelector('#__combA').focus();
   }
 
   // ── Theme toggle ───────────────────────────────────────────────────────────

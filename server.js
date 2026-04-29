@@ -157,10 +157,14 @@ let bskyRunning = false;
 
 async function ingestPosts(newPosts, label) {
   if (!activeTopic) return;
-  const activeTagSet = new Set(getHashtags());
+  const activeTagSet  = new Set(getHashtags());
+  const activeCombos  = activeTopic.combos || [];
   let added = 0, skipped = 0;
   for (const post of newPosts) {
-    if (!(post.hashtags || []).some(t => activeTagSet.has(t))) { skipped++; continue; }
+    const postTags = new Set(post.hashtags || []);
+    const matchesTag   = [...activeTagSet].some(t => postTags.has(t));
+    const matchesCombo = activeCombos.some(c => postTags.has(c.a) && postTags.has(c.b));
+    if (!matchesTag && !matchesCombo) { skipped++; continue; }
     if (!postCache.has(post.id)) added++;
     postCache.set(post.id, post);
   }
