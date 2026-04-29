@@ -162,19 +162,25 @@ function igGet(urlStr, cookieStr, csrfToken) {
 function extractPostsFromIgData(data) {
   const posts = [];
 
-  // sections at top level (v1 tags API)
-  for (const section of (data.sections || [])) {
-    for (const { media } of (section.layout_content?.medias || [])) {
-      if (media) posts.push(parseInstagramMedia(media));
+  // Helper: parse sections array
+  function parseSections(sections) {
+    for (const section of (sections || [])) {
+      for (const item of (section.layout_content?.medias || [])) {
+        if (item?.media) posts.push(parseInstagramMedia(item.media));
+        else if (item?.pk)  posts.push(parseInstagramMedia(item));
+      }
     }
   }
 
+  // v1 tags/web_info: data.data.top.sections + data.data.recent.sections
+  parseSections(data?.data?.top?.sections);
+  parseSections(data?.data?.recent?.sections);
+
+  // sections at top level (v1 tags API)
+  parseSections(data.sections);
+
   // media_grid.sections
-  for (const section of (data.media_grid?.sections || [])) {
-    for (const item of (section.layout_content?.medias || [])) {
-      if (item?.media) posts.push(parseInstagramMedia(item.media));
-    }
-  }
+  parseSections(data.media_grid?.sections);
 
   // data.hashtag GraphQL edges
   for (const edge of (data?.data?.hashtag?.edge_hashtag_to_media?.edges || [])) {
@@ -190,11 +196,7 @@ function extractPostsFromIgData(data) {
     for (const edge of (tagInfo.edge_hashtag_to_top_posts?.edges || [])) {
       if (edge?.node) posts.push(parseInstagramMedia(edge.node));
     }
-    for (const section of (tagInfo.media_grid?.sections || [])) {
-      for (const item of (section.layout_content?.medias || [])) {
-        if (item?.media) posts.push(parseInstagramMedia(item.media));
-      }
-    }
+    parseSections(tagInfo.media_grid?.sections);
   }
 
   // xdt_fbsearch__top_serp_graphql
@@ -204,11 +206,7 @@ function extractPostsFromIgData(data) {
       for (const item of (edge?.node?.items || [])) {
         if (item?.pk) posts.push(parseInstagramMedia(item));
       }
-      for (const section of (edge?.node?.media_grid?.sections || [])) {
-        for (const m of (section.layout_content?.medias || [])) {
-          if (m?.media) posts.push(parseInstagramMedia(m.media));
-        }
-      }
+      parseSections(edge?.node?.media_grid?.sections);
     }
   }
 
