@@ -720,12 +720,12 @@
     const rs    = p.reviewStatus || '';
     const imgEl = p.imageUrl
       ? `<a href="${esc(p.postUrl)}" target="_blank" rel="noopener"><img class="card-img" src="${esc(p.imageUrl)}" alt="" loading="lazy" onerror="this.style.display='none'"></a>`
-      : `<div class="card-img-ph">${p.platform==='tiktok'?'🎵':'📷'}</div>`;
+      : `<div class="card-img-ph">${p.platform==='tiktok' ? '🎵' : p.platform==='bluesky' ? '<img src="https://bsky.app/static/apple-touch-icon.png" width="60" height="60" alt="🦋" style="opacity:.65;border-radius:10px">' : '📷'}</div>`;
     const embedBtn = p.imageUrl ? `<button class="btn" data-embed="${p.id}" onclick="copyEmbed('${p.id}')">🖼️ Embed</button>` : '';
     const capEl   = p.caption  ? `<div class="caption" data-cap="${p.id}" onclick="toggleCaption('${p.id}')">${esc(p.caption)}</div>` : '';
     const badge   = rs ? `<div class="review-badge ${rs}">${rs==='used'?'✓ Gebruikt':'✗ Skip'}</div>` : '';
     return `
-      <div class="card${fresh}${rs?' '+rs:''}">
+      <div class="card${fresh}${rs?' '+rs:''}" data-id="${p.id}">
         ${badge}
         ${imgEl}
         <div class="card-meta">
@@ -816,6 +816,25 @@
   socket.on('post:reviewed', ({ postId, status }) => {
     const p = allPosts.find(x=>x.id===postId);
     if (p) p.reviewStatus = status;
+    // Als hideReviewed aan staat en een post wordt gemarkeerd (niet ongedaan), animeer hem weg
+    if (hideReviewed && status) {
+      const card = document.querySelector(`.card[data-id="${postId}"]`);
+      if (card) {
+        // Toon badge direct zodat gebruiker de actie ziet
+        const existing = card.querySelector('.review-badge');
+        const badgeHtml = `<div class="review-badge ${status}">${status==='used'?'✓ Gebruikt':'✗ Skip'}</div>`;
+        if (existing) existing.outerHTML = badgeHtml; else card.insertAdjacentHTML('afterbegin', badgeHtml);
+        card.classList.add(status);
+        // Na 1.2s wegfaden
+        setTimeout(() => {
+          card.style.transition = 'opacity .45s ease, transform .45s ease';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(.96)';
+          setTimeout(() => renderPosts(), 450);
+        }, 1200);
+        return;
+      }
+    }
     renderPosts();
   });
 
