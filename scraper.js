@@ -319,21 +319,63 @@ async function scrapeTikTok(hashtag) {
 
 const https = require('https');
 
-function bskyGet(url) {
+let bskyToken     = null;
+let bskyTokenExp  = 0;
+
+function bskyRequest(urlStr, token) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'Accept': 'application/json' } }, res => {
+    const u = new URL(urlStr);
+    const headers = { 'Accept': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    https.get({ hostname: u.hostname, path: u.pathname + u.search, headers }, res => {
       let body = '';
       res.on('data', d => body += d);
       res.on('end', () => {
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode}`));
-          return;
-        }
+        if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return; }
         try { resolve(JSON.parse(body)); }
-        catch (e) { reject(new Error(`Geen JSON (response begint met: ${body.slice(0, 60)})`)); }
+        catch (e) { reject(new Error(`Geen JSON: ${body.slice(0, 60)}`)); }
       });
     }).on('error', reject);
   });
+}
+
+function bskyPost(hostname, path, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req  = https.request({
+      hostname, path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, res => {
+      let resp = '';
+      res.on('data', d => resp += d);
+      res.on('end', () => {
+        if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode}: ${resp.slice(0, 80)}`)); return; }
+        try { resolve(JSON.parse(resp)); }
+        catch (e) { reject(new Error(`Geen JSON`)); }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+async function getBskyToken() {
+  if (bskyToken && Date.now() < bskyTokenExp) return bskyToken;
+  const id  = process.env.BSKY_IDENTIFIER;
+  const pwd = process.env.BSKY_APP_PASSWORD;
+  if (!id || !pwd) return null;
+  try {
+    const res = await bskyPost('bsky.social', '/xrpc/com.atproto.server.createSession',
+      { identifier: id, password: pwd });
+    bskyToken    = res.accessJwt;
+    bskyTokenExp = Date.now() + 90 * 60 * 1000; // 90 min
+    console.log('[Bluesky] Ingelogd als', res.handle);
+    return bskyToken;
+  } catch (err) {
+    console.warn('[Bluesky] Login mislukt:', err.message);
+    return null;
+  }
 }
 
 function parseBskyPost(post) {
@@ -345,8 +387,7 @@ function parseBskyPost(post) {
     embed?.images?.[0]?.fullsize ||
     embed?.media?.images?.[0]?.fullsize ||
     '';
-  const uri = post.uri || '';
-  // at://did:plc:xxx/app.bsky.feed.post/rkey → https://bsky.app/profile/handle/post/rkey
+  const uri  = post.uri || '';
   const rkey = uri.split('/').pop();
   return {
     id:        `bsky_${post.cid || rkey}`,
@@ -365,9 +406,16 @@ function parseBskyPost(post) {
 async function scrapeBluesky(hashtag) {
   const posts = [];
   try {
-    const q   = encodeURIComponent(`#${hashtag}`);
-    const url = `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${q}&limit=25&sort=latest`;
-    const data = await bskyGet(url);
+    const token = await getBskyToken();
+    if (!token) {
+      // Stel BSKY_IDENTIFIER en BSKY_APP_PASSWORD in als omgevingsvariabelen
+      console.warn('[Bluesky] Geen credentials – stel BSKY_IDENTIFIER en BSKY_APP_PASSWORD in');
+      return posts;
+    }
+    const q    = encodeURIComponent(`#${hashtag}`);
+    const host = token ? 'bsky.social' : 'public.api.bsky.app';
+    const url  = `https://${host}/xrpc/app.bsky.feed.searchPosts?q=${q}&limit=25&sort=latest`;
+    const data = await bskyRequest(url, token);
     for (const post of (data.posts || [])) {
       posts.push(parseBskyPost(post));
     }
