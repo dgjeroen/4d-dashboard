@@ -249,9 +249,7 @@ async function scrapeInstagram(hashtag) {
       const found = extractPostsFromIgData(data);
       posts.push(...found);
       console.log(`[Instagram] #${hashtag} → ${found.length} posts via ${url.slice(30, 90)}`);
-      if (found.length > 0) break; // eerste werkende endpoint is genoeg
-      // log keys voor debugging als nul posts
-      console.log(`[Instagram] #${hashtag} data keys: ${Object.keys(data).join(', ')} | data.*: ${Object.keys(data.data || {}).join(', ')}`);
+      if (found.length > 0) break;
     } catch (err) {
       console.warn(`[Instagram] #${hashtag} ${url.slice(30, 70)}: ${err.message}`);
       if (igBlocked) break;
