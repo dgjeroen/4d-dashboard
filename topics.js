@@ -74,6 +74,18 @@ function updateHashtags(topicId, hashtags) {
   return save(t);
 }
 
+function addHashtagToGroup(topicId, tag, group) {
+  const t = load(topicId);
+  if (!t) return null;
+  if (group === 'b') {
+    if (!t.groupB.hashtags.includes(tag)) t.groupB.hashtags.push(tag);
+  } else {
+    if (!t.groupA.hashtags.includes(tag)) t.groupA.hashtags.push(tag);
+  }
+  t.hashtags = [...new Set([...(t.groupA.hashtags||[]), ...(t.groupB.hashtags||[])])];
+  return save(t);
+}
+
 function update(topicId, { name, groupA, groupB }) {
   const t = load(topicId);
   if (!t) return null;
@@ -97,4 +109,4 @@ function summary(t) {
   };
 }
 
-module.exports = { list, load, save, create, update, markPost, updateHashtags, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };
+module.exports = { list, load, save, create, update, markPost, updateHashtags, addHashtagToGroup, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };

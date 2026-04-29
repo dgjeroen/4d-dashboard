@@ -224,8 +224,9 @@
     .hpill.required.a    { background: var(--accent); color: #fff; }
     .hpill.required.b    { background: var(--amber);  color: #fff; }
     .hpill.required.disc { background: var(--muted);  color: #fff; }
-    .hpill .hx { cursor: pointer; opacity: .5; margin-left: 1px; font-size: .65rem; }
+    .hpill .hx { cursor: pointer; opacity: .55; margin-left: 2px; font-size: .8rem; line-height: 1; font-weight: 700; }
     .hpill .hx:hover { opacity: 1; color: var(--red); }
+    .hpill.core .hx { display: none; }
 
     #reqBar {
       padding: 4px 16px 5px; background: var(--red-bg); border-bottom: 2px solid var(--red);
@@ -260,6 +261,12 @@
       padding: 0 2px; transition: transform .1s;
     }
     .suggest-pill .sp-ok:hover { transform: scale(1.3); }
+    .sp-dismiss-all {
+      margin-left: auto; font-size: .68rem; padding: 2px 8px; border-radius: 5px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; white-space: nowrap;
+    }
+    .sp-dismiss-all:hover { color: var(--red); border-color: var(--red); }
     .suggest-pill .sp-no {
       cursor: pointer; color: var(--muted); font-size: .8rem; line-height: 1;
       padding: 0 2px; transition: color .1s;
@@ -459,6 +466,7 @@
     <div id="suggestBar">
       <span class="suggest-label">💡 Suggesties</span>
       <span id="suggestPills"></span>
+      <button class="sp-dismiss-all" id="dismissAllBtn" onclick="dismissAllSuggestions()" title="Alle suggesties afwijzen">Alles afwijzen</button>
     </div>
   </div>
 
@@ -588,14 +596,16 @@
   // ── Hashtag bar ────────────────────────────────────────────────────────────
   function renderHashtagBar(topic, hashtags) {
     if (!topic) return;
-    const setA = new Set(topic.groupA.hashtags);
-    const setB = new Set(topic.groupB.hashtags);
+    const setA    = new Set(topic.groupA.hashtags);
+    const setB    = new Set(topic.groupB.hashtags);
+    const coreSet = new Set([...topic.groupA.hashtags, ...topic.groupB.hashtags]);
     document.getElementById('hashtagBar').innerHTML =
       '<span id="hashtagBar-label">Volgend</span>' +
       hashtags.map(t => {
-        const cls = setA.has(t) ? 'a' : setB.has(t) ? 'b' : 'disc';
-        const req = requiredTags.has(t) ? ' required' : '';
-        return `<span class="hpill ${cls}${req}" onclick="toggleRequired('${t}')" title="Klik om te filteren op deze tag">#${esc(t)}<span class="hx" onclick="event.stopPropagation();toggleHashtag('${t}')">×</span></span>`;
+        const cls  = setA.has(t) ? 'a' : setB.has(t) ? 'b' : 'disc';
+        const core = coreSet.has(t) ? ' core' : '';
+        const req  = requiredTags.has(t) ? ' required' : '';
+        return `<span class="hpill ${cls}${core}${req}" onclick="toggleRequired('${t}')" title="${core ? 'Kernhashtag – kan niet worden verwijderd' : 'Klik om te filteren'}">#${esc(t)}<span class="hx" onclick="event.stopPropagation();toggleHashtag('${t}')">×</span></span>`;
       }).join('');
     renderReqBar();
   }
@@ -853,13 +863,45 @@
       <span class="suggest-pill">
         #${esc(s.tag)}
         <span class="sp-count">${s.count}×</span>
-        <span class="sp-ok" onclick="approveHashtag('${s.tag}')" title="Toevoegen">✓</span>
+        <span class="sp-ok" onclick="approveHashtag('${s.tag}')" title="Toevoegen aan groep…">✓</span>
         <span class="sp-no" onclick="rejectHashtag('${s.tag}')" title="Afwijzen">✕</span>
       </span>`).join('');
   });
 
-  function approveHashtag(tag) { socket.emit('hashtag:approve', { tag }); }
+  function approveHashtag(tag) {
+    if (!activeTopic) return;
+    const gA = activeTopic.groupA?.name || 'A';
+    const gB = activeTopic.groupB?.name || 'B';
+    window.__pickGroup(tag, gA, gB).then(choice => {
+      if (choice === null) return;
+      socket.emit('hashtag:approve', { tag, group: choice });
+    });
+  }
   function rejectHashtag(tag)  { socket.emit('hashtag:reject',  { tag }); }
+  function dismissAllSuggestions() {
+    const pills = document.getElementById('suggestPills');
+    const tags = [...pills.querySelectorAll('.suggest-pill')].map(el => el.textContent.trim().match(/#(\S+)/)?.[1]).filter(Boolean);
+    tags.forEach(tag => socket.emit('hashtag:reject', { tag }));
+  }
+
+  window.__pickGroup = function(tag, gA, gB) {
+    // Inline groepkeuze zonder externe modal
+    const d = document.createElement('dialog');
+    d.style.cssText = 'border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);padding:20px 24px;min-width:220px;text-align:center;';
+    d.innerHTML = `<p style="margin:0 0 14px;font-size:.9rem;">Voeg <strong>#${esc(tag)}</strong> toe aan:</p>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button id="__pgA" style="flex:1;padding:8px 0;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:700;">${esc(gA)}</button>
+        <button id="__pgB" style="flex:1;padding:8px 0;border-radius:8px;border:none;background:var(--amber,#f59e0b);color:#fff;cursor:pointer;font-weight:700;">${esc(gB)}</button>
+      </div>
+      <button id="__pgC" style="margin-top:10px;font-size:.75rem;background:none;border:none;color:var(--muted);cursor:pointer;">Annuleren</button>`;
+    document.body.appendChild(d);
+    d.showModal();
+    return new Promise(resolve => {
+      d.querySelector('#__pgA').onclick = () => { d.close(); d.remove(); resolve('a'); };
+      d.querySelector('#__pgB').onclick = () => { d.close(); d.remove(); resolve('b'); };
+      d.querySelector('#__pgC').onclick = () => { d.close(); d.remove(); resolve(null); };
+    });
+  };
 
   // ── Instagram session upload ───────────────────────────────────────────────────
   async function uploadIgSession(input) {
