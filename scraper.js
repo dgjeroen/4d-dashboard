@@ -383,7 +383,8 @@ function parseBskyPost(post) {
   const record  = post.record || {};
   const embed   = post.embed  || {};
   const imageUrl =
-    // video thumbnail
+    // video embed: thumbnail is direct een string URL
+    (typeof embed?.thumbnail === 'string' ? embed.thumbnail : null) ||
     embed?.thumbnail?.fullsize ||
     embed?.thumbnail?.thumb ||
     // images embed
@@ -393,6 +394,7 @@ function parseBskyPost(post) {
     embed?.media?.images?.[0]?.fullsize ||
     embed?.media?.images?.[0]?.thumb ||
     // video in recordWithMedia
+    (typeof embed?.media?.thumbnail === 'string' ? embed.media.thumbnail : null) ||
     embed?.media?.thumbnail?.fullsize ||
     embed?.media?.thumbnail?.thumb ||
     // external link preview
