@@ -436,33 +436,47 @@ async function scrapeBluesky(hashtag) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-async function getAllPosts(hashtags) {
-  const results = [];
+// ─── Public API ───────────────────────────────────────────────────────────────
 
-  // ── Instagram: één gedeelde browser-context voor alle hashtags ──────────
+function dedup(results) {
+  const seen = new Set();
+  return results.filter(p => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+}
+
+function stampTag(posts, tagLower) {
+  posts.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
+}
+
+async function getInstagramPosts(hashtags) {
+  const results = [];
+  if (igBlocked) return results;
+
   let igCtx = null;
-  if (!igBlocked) {
-    try {
-      const browser = await getIgBrowser();
-      igCtx = await browser.newContext({
-        storageState: fs.existsSync(`${SESSIONS_DIR}/instagram.json`) ? `${SESSIONS_DIR}/instagram.json` : undefined,
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        viewport:  { width: 1280, height: 900 },
-        locale:    'nl-NL',
-        timezoneId:'Europe/Amsterdam',
-      });
-      igBrowserUses++;
-    } catch (err) {
-      console.warn('[Instagram] Browser starten mislukt:', err.message);
-    }
+  try {
+    const browser = await getIgBrowser();
+    igCtx = await browser.newContext({
+      storageState: fs.existsSync(`${SESSIONS_DIR}/instagram.json`) ? `${SESSIONS_DIR}/instagram.json` : undefined,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      viewport:  { width: 1280, height: 900 },
+      locale:    'nl-NL',
+      timezoneId:'Europe/Amsterdam',
+    });
+    igBrowserUses++;
+  } catch (err) {
+    console.warn('[Instagram] Browser starten mislukt:', err.message);
+    return results;
   }
 
   for (let i = 0; i < hashtags.length; i++) {
-    const tag      = hashtags[i];
-    const tagLower = tag.toLowerCase();
+    const tag = hashtags[i];
+    if (igBlocked) break;
 
-    // Elke 3-4 hashtags: kort bezoek aan Instagram-homepage (menselijk gedrag)
-    if (igCtx && !igBlocked && i > 0 && i % rand(3, 4) === 0) {
+    // Elke 3-4 hashtags: kort bezoek aan Instagram-homepage
+    if (i > 0 && i % rand(3, 4) === 0) {
       console.log('[Instagram] Tussenstop: homepage bezoek');
       const homePage = await igCtx.newPage();
       try {
@@ -470,50 +484,57 @@ async function getAllPosts(hashtags) {
         await homePage.waitForTimeout(rand(3000, 7000));
         await humanScroll(homePage);
         await homePage.waitForTimeout(rand(1000, 3000));
-      } catch { /* non-fatal */ } finally {
-        await homePage.close();
-      }
+      } catch { /* non-fatal */ } finally { await homePage.close(); }
     }
 
-    const [ig, tt, bsky] = await Promise.allSettled([
-      igCtx && !igBlocked ? scrapeInstagram(tag, igCtx) : Promise.resolve([]),
-      scrapeTikTok(tag),
-      scrapeBluesky(tag),
-    ]);
+    const posts = await scrapeInstagram(tag, igCtx);
+    stampTag(posts, tag.toLowerCase());
+    results.push(...posts);
 
-    if (ig.status === 'fulfilled') {
-      ig.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
-      results.push(...ig.value);
-    }
-    if (tt.status === 'fulfilled') {
-      tt.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
-      results.push(...tt.value);
-    }
-    if (bsky.status === 'fulfilled') {
-      bsky.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
-      results.push(...bsky.value);
-    }
-
-    // Willekeurige pauze tussen hashtags (8–20 sec) om patroon te doorbreken
     if (i < hashtags.length - 1 && !igBlocked) {
       const pause = rand(8_000, 20_000);
-      console.log(`[Instagram] Pauze ${(pause/1000).toFixed(0)}s voor volgende hashtag…`);
+      console.log(`[Instagram] Pauze ${(pause/1000).toFixed(0)}s…`);
       await new Promise(r => setTimeout(r, pause));
     }
   }
 
-  // IG context sluiten na alle hashtags
-  if (igCtx) {
-    try { await igCtx.close(); } catch {}
-  }
+  try { await igCtx.close(); } catch {}
+  return dedup(results);
+}
 
-  // Deduplicate by id
-  const seen = new Set();
-  return results.filter(p => {
-    if (seen.has(p.id)) return false;
-    seen.add(p.id);
-    return true;
-  });
+async function getTikTokPosts(hashtags) {
+  const results = [];
+  for (const tag of hashtags) {
+    const posts = await scrapeTikTok(tag);
+    stampTag(posts, tag.toLowerCase());
+    results.push(...posts);
+    await new Promise(r => setTimeout(r, 1_500));
+  }
+  return dedup(results);
+}
+
+async function getBskyPosts(hashtags) {
+  const results = [];
+  for (const tag of hashtags) {
+    const posts = await scrapeBluesky(tag);
+    stampTag(posts, tag.toLowerCase());
+    results.push(...posts);
+  }
+  return dedup(results);
+}
+
+// Behoud voor backwards compat
+async function getAllPosts(hashtags) {
+  const [ig, tt, bsky] = await Promise.allSettled([
+    getInstagramPosts(hashtags),
+    getTikTokPosts(hashtags),
+    getBskyPosts(hashtags),
+  ]);
+  return dedup([
+    ...(ig.status   === 'fulfilled' ? ig.value   : []),
+    ...(tt.status   === 'fulfilled' ? tt.value   : []),
+    ...(bsky.status === 'fulfilled' ? bsky.value : []),
+  ]);
 }
 
 async function reAuthInstagram() {
@@ -525,4 +546,4 @@ async function reAuthInstagram() {
   console.log('[Instagram] Browser herstart na sessie-update');
 }
 
-module.exports = { getAllPosts, getIgBlocked, setIgBlocked, reAuthInstagram };
+module.exports = { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram };

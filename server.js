@@ -8,7 +8,7 @@ const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
 
-const { getAllPosts, getIgBlocked, setIgBlocked, reAuthInstagram } = require('./scraper');
+const { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram } = require('./scraper');
 const { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions } = require('./hashtags');
 const topics = require('./topics');
 const { addHashtagToGroup } = topics;
@@ -86,7 +86,6 @@ if (BASE) {
 const SESSIONS_DIR   = process.env.SESSIONS_DIR || './sessions';
 const CACHE_FILE     = path.join(SESSIONS_DIR, 'postcache.json');
 const postCache      = new Map();
-let   scrapeRunning  = false;
 let   activeTopic    = null;
 let   lastManualScrape = 0;
 
@@ -152,42 +151,75 @@ function broadcastAll() {
 }
 
 // ─── Scrape cycle ─────────────────────────────────────────────────────────────
-async function runScrape() {
-  if (scrapeRunning || !activeTopic) return;
-  scrapeRunning = true;
-  const t0 = Date.now();
-  try {
-    const hashtags = getHashtags();
-    console.log(`[Scrape] Starting – ${hashtags.length} hashtags`);
-    const newPosts = await getAllPosts(hashtags);
-    const activeTagSet = new Set(hashtags);
-    let added = 0, skipped = 0;
-    for (const post of newPosts) {
-      const postTags = post.hashtags || [];
-      if (!postTags.some(t => activeTagSet.has(t))) { skipped++; continue; }
-      if (!postCache.has(post.id)) added++;
-      postCache.set(post.id, post);
-    }
-    if (skipped > 0) console.log(`[Scrape] Skipped ${skipped} posts with no matching active hashtag`);
-    if (postCache.size > 500) {
-      const sorted = Array.from(postCache.entries())
-        .sort((a, b) => b[1].timestamp - a[1].timestamp);
-      postCache.clear();
-      sorted.slice(0, 500).forEach(([k, v]) => postCache.set(k, v));
-    }
-    const breakdown = Array.from(postCache.values()).reduce((a, p) => { a[p.platform] = (a[p.platform]||0)+1; return a; }, {});
-    console.log(`[Scrape] Done in ${((Date.now()-t0)/1000).toFixed(1)}s – +${added} new, total: ${postCache.size}`, JSON.stringify(breakdown));
+let igRunning   = false;
+let ttRunning   = false;
+let bskyRunning = false;
+
+async function ingestPosts(newPosts, label) {
+  if (!activeTopic) return;
+  const activeTagSet = new Set(getHashtags());
+  let added = 0, skipped = 0;
+  for (const post of newPosts) {
+    if (!(post.hashtags || []).some(t => activeTagSet.has(t))) { skipped++; continue; }
+    if (!postCache.has(post.id)) added++;
+    postCache.set(post.id, post);
+  }
+  if (postCache.size > 500) {
+    const sorted = Array.from(postCache.entries()).sort((a,b) => b[1].timestamp - a[1].timestamp);
+    postCache.clear();
+    sorted.slice(0, 500).forEach(([k,v]) => postCache.set(k,v));
+  }
+  if (added > 0 || label === 'instagram') {
+    console.log(`[Scrape:${label}] +${added} new (${skipped} skipped), total: ${postCache.size}`);
     saveCache();
     broadcastAll();
     io.emit('scrape:done');
-  } catch (err) {
-    console.error('[Scrape] Error:', err.message);
-  } finally {
-    scrapeRunning = false;
   }
 }
 
-cron.schedule('*/15 * * * *', runScrape);
+async function runInstagramScrape() {
+  if (igRunning || !activeTopic) return;
+  igRunning = true;
+  try {
+    const posts = await getInstagramPosts(getHashtags());
+    await ingestPosts(posts, 'instagram');
+  } catch (err) { console.error('[Scrape:instagram]', err.message); }
+  finally { igRunning = false; }
+}
+
+async function runTikTokScrape() {
+  if (ttRunning || !activeTopic) return;
+  ttRunning = true;
+  try {
+    const posts = await getTikTokPosts(getHashtags());
+    await ingestPosts(posts, 'tiktok');
+  } catch (err) { console.error('[Scrape:tiktok]', err.message); }
+  finally { ttRunning = false; }
+}
+
+async function runBskyScrape() {
+  if (bskyRunning || !activeTopic) return;
+  bskyRunning = true;
+  try {
+    const posts = await getBskyPosts(getHashtags());
+    await ingestPosts(posts, 'bluesky');
+  } catch (err) { console.error('[Scrape:bluesky]', err.message); }
+  finally { bskyRunning = false; }
+}
+
+// Behoud voor handmatig vernieuwen (scrape:now)
+let scrapeRunning = false;
+async function runScrape() {
+  if (scrapeRunning || !activeTopic) return;
+  scrapeRunning = true;
+  try {
+    await Promise.all([runInstagramScrape(), runTikTokScrape(), runBskyScrape()]);
+  } finally { scrapeRunning = false; }
+}
+
+cron.schedule('*/5  * * * *', runBskyScrape);    // Bluesky: elke 5 minuten
+cron.schedule('*/10 * * * *', runTikTokScrape);  // TikTok:  elke 10 minuten
+cron.schedule('*/15 * * * *', runInstagramScrape); // Instagram: elke 15 minuten
 
 cron.schedule('0 * * * *', () => {
   if (!activeTopic) return;
