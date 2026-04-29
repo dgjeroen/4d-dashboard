@@ -187,7 +187,7 @@ async function runScrape() {
   }
 }
 
-cron.schedule('*/3 * * * *', runScrape);
+cron.schedule('*/15 * * * *', runScrape);
 
 cron.schedule('0 * * * *', () => {
   if (!activeTopic) return;

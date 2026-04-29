@@ -110,84 +110,54 @@ function parseInstagramMedia(media) {
   };
 }
 
-// ─── Instagram (direct HTTP) ──────────────────────────────────────────────────
+// ─── Instagram (Playwright browser) ──────────────────────────────────────────
 
-function igGet(urlStr, cookieStr, csrfToken) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(urlStr);
-    const options = {
-      hostname: u.hostname,
-      path:     u.pathname + u.search,
-      headers:  {
-        'Accept':           '*/*',
-        'Accept-Language':  'nl-NL,nl;q=0.9',
-        'Cookie':           cookieStr,
-        'Referer':          'https://www.instagram.com/',
-        'User-Agent':       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'X-CSRFToken':      csrfToken,
-        'X-IG-App-ID':      '936619743392459',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-    };
-    https.get(options, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => {
-        if (res.statusCode === 401 || res.statusCode === 403) {
-          igBlocked = true;
-          reject(new Error(`HTTP ${res.statusCode} – geblokkeerd`));
-          return;
-        }
-        if (res.statusCode === 302 || res.statusCode === 301) {
-          const loc = res.headers.location || '';
-          if (loc.includes('/challenge/') || loc.includes('/accounts/login')) {
-            igBlocked = true;
-            reject(new Error(`Redirect naar ${loc} – geblokkeerd`));
-          } else {
-            reject(new Error(`Redirect naar ${loc}`));
-          }
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode}`));
-          return;
-        }
-        try { resolve(JSON.parse(body)); }
-        catch(e) { reject(new Error(`Geen JSON: ${body.slice(0, 80)}`)); }
-      });
-    }).on('error', reject);
+const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+// Gedeelde browser instantie voor Instagram (wordt hergebruikt tussen hashtags)
+let igBrowser = null;
+let igBrowserUses = 0;
+
+async function getIgBrowser() {
+  if (igBrowser?.isConnected()) return igBrowser;
+  const fs2 = require('fs');
+  const candidates = [
+    '/ms-playwright/chromium-1117/chrome-linux/chrome',
+    '/ms-playwright/chromium-1161/chrome-linux/chrome',
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  ].filter(Boolean);
+  const executablePath = candidates.find(p => fs2.existsSync(p));
+  if (!executablePath) throw new Error('Chromium niet gevonden');
+  igBrowser = await chromium.launch({
+    headless: true,
+    executablePath,
+    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'],
   });
+  igBrowser.on('disconnected', () => { igBrowser = null; igBrowserUses = 0; });
+  igBrowserUses = 0;
+  return igBrowser;
 }
 
 function extractPostsFromIgData(data) {
   const posts = [];
 
-  // Helper: parse sections array
   function parseSections(sections) {
     for (const section of (sections || [])) {
       for (const item of (section.layout_content?.medias || [])) {
         if (item?.media) posts.push(parseInstagramMedia(item.media));
-        else if (item?.pk)  posts.push(parseInstagramMedia(item));
+        else if (item?.pk) posts.push(parseInstagramMedia(item));
       }
     }
   }
 
-  // v1 tags/web_info: data.data.top.sections + data.data.recent.sections
   parseSections(data?.data?.top?.sections);
   parseSections(data?.data?.recent?.sections);
-
-  // sections at top level (v1 tags API)
   parseSections(data.sections);
-
-  // media_grid.sections
   parseSections(data.media_grid?.sections);
 
-  // data.hashtag GraphQL edges
   for (const edge of (data?.data?.hashtag?.edge_hashtag_to_media?.edges || [])) {
     if (edge?.node) posts.push(parseInstagramMedia(edge.node));
   }
-
-  // fetch__XDTTagInfo
   const tagInfo = data?.data?.fetch__XDTTagInfo;
   if (tagInfo) {
     for (const edge of (tagInfo.edge_hashtag_to_media?.edges || [])) {
@@ -198,8 +168,6 @@ function extractPostsFromIgData(data) {
     }
     parseSections(tagInfo.media_grid?.sections);
   }
-
-  // xdt_fbsearch__top_serp_graphql
   const topSerp = data?.data?.xdt_fbsearch__top_serp_graphql;
   if (topSerp) {
     for (const edge of (topSerp.edges || [])) {
@@ -213,47 +181,70 @@ function extractPostsFromIgData(data) {
   return posts;
 }
 
-async function scrapeInstagram(hashtag) {
+async function humanScroll(page) {
+  // Scroll in stappen naar beneden, met kleine variaties
+  const steps = rand(3, 6);
+  for (let i = 0; i < steps; i++) {
+    await page.evaluate((dy) => window.scrollBy(0, dy), rand(200, 450));
+    await page.waitForTimeout(rand(400, 1200));
+  }
+}
+
+async function scrapeInstagram(hashtag, igCtx) {
   if (igBlocked) {
     console.log(`[Instagram] Overgeslagen (geblokkeerd) – #${hashtag}`);
     return [];
   }
 
   const sessionFile = `${SESSIONS_DIR}/instagram.json`;
-  if (!fs.existsSync(sessionFile)) {
-    console.warn(`[Instagram] Geen sessiebestand – upload cookies via het dashboard`);
-    igBlocked = true;
-    return [];
-  }
-
-  let cookieStr, csrfToken;
-  try {
-    const session = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
-    const igCookies = (session.cookies || []).filter(c => c.domain?.includes('instagram.com'));
-    cookieStr = igCookies.map(c => `${c.name}=${c.value}`).join('; ');
-    csrfToken = igCookies.find(c => c.name === 'csrftoken')?.value || '';
-  } catch (err) {
-    console.warn(`[Instagram] Sessie lezen mislukt: ${err.message}`);
-    return [];
-  }
-
   const posts = [];
-  const endpoints = [
-    `https://www.instagram.com/api/v1/tags/web_info/?tag_name=${encodeURIComponent(hashtag)}`,
-    `https://i.instagram.com/api/v1/tags/web_info/?tag_name=${encodeURIComponent(hashtag)}`,
-  ];
 
-  for (const url of endpoints) {
+  // Hergebruik de meegegeven context (gedeeld over hashtags)
+  const page = await igCtx.newPage();
+
+  page.on('response', async (res) => {
+    const url = res.url();
+    if (!res.ok() || !url.includes('instagram.com')) return;
+    const isRelevant =
+      url.includes('/api/v1/tags/') ||
+      url.includes('graphql/query') ||
+      url.includes('/api/graphql') ||
+      url.includes('fbsearch') ||
+      url.includes('/api/v1/search/') ||
+      url.includes('web/search/');
+    if (!isRelevant) return;
     try {
-      const data = await igGet(url, cookieStr, csrfToken);
-      const found = extractPostsFromIgData(data);
-      posts.push(...found);
-      console.log(`[Instagram] #${hashtag} → ${found.length} posts via ${url.slice(30, 90)}`);
-      if (found.length > 0) break;
-    } catch (err) {
-      console.warn(`[Instagram] #${hashtag} ${url.slice(30, 70)}: ${err.message}`);
-      if (igBlocked) break;
+      const data  = await res.json();
+      const before = posts.length;
+      extractPostsFromIgData(data).forEach(p => posts.push(p));
+      const added = posts.length - before;
+      if (added > 0) console.log(`[Instagram] +${added} posts via ${url.slice(26, 90)}`);
+    } catch { /* non-JSON */ }
+  });
+
+  try {
+    const tagUrl = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
+    await page.goto(tagUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+    const finalUrl = page.url();
+    console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
+
+    if (finalUrl.includes('/challenge/') || finalUrl.includes('/accounts/login')) {
+      console.warn(`[Instagram] Geblokkeerd – sessie NIET overschreven`);
+      igBlocked = true;
+      return posts;
     }
+
+    // Menselijk scrollgedrag
+    await page.waitForTimeout(rand(1500, 3000));
+    await humanScroll(page);
+    await page.waitForTimeout(rand(1000, 2500));
+
+    // Opslaan alleen als niet geblokkeerd
+    await saveSession(igCtx, 'instagram');
+  } catch (err) {
+    console.warn(`[Instagram] #${hashtag}: ${err.message}`);
+  } finally {
+    await page.close();
   }
 
   return posts;
@@ -448,13 +439,48 @@ async function scrapeBluesky(hashtag) {
 async function getAllPosts(hashtags) {
   const results = [];
 
-  for (const tag of hashtags) {
+  // ── Instagram: één gedeelde browser-context voor alle hashtags ──────────
+  let igCtx = null;
+  if (!igBlocked) {
+    try {
+      const browser = await getIgBrowser();
+      igCtx = await browser.newContext({
+        storageState: fs.existsSync(`${SESSIONS_DIR}/instagram.json`) ? `${SESSIONS_DIR}/instagram.json` : undefined,
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        viewport:  { width: 1280, height: 900 },
+        locale:    'nl-NL',
+        timezoneId:'Europe/Amsterdam',
+      });
+      igBrowserUses++;
+    } catch (err) {
+      console.warn('[Instagram] Browser starten mislukt:', err.message);
+    }
+  }
+
+  for (let i = 0; i < hashtags.length; i++) {
+    const tag      = hashtags[i];
     const tagLower = tag.toLowerCase();
+
+    // Elke 3-4 hashtags: kort bezoek aan Instagram-homepage (menselijk gedrag)
+    if (igCtx && !igBlocked && i > 0 && i % rand(3, 4) === 0) {
+      console.log('[Instagram] Tussenstop: homepage bezoek');
+      const homePage = await igCtx.newPage();
+      try {
+        await homePage.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+        await homePage.waitForTimeout(rand(3000, 7000));
+        await humanScroll(homePage);
+        await homePage.waitForTimeout(rand(1000, 3000));
+      } catch { /* non-fatal */ } finally {
+        await homePage.close();
+      }
+    }
+
     const [ig, tt, bsky] = await Promise.allSettled([
-      scrapeInstagram(tag),
+      igCtx && !igBlocked ? scrapeInstagram(tag, igCtx) : Promise.resolve([]),
       scrapeTikTok(tag),
       scrapeBluesky(tag),
     ]);
+
     if (ig.status === 'fulfilled') {
       ig.value.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
       results.push(...ig.value);
@@ -468,8 +494,17 @@ async function getAllPosts(hashtags) {
       results.push(...bsky.value);
     }
 
-    // Brief pause between hashtags to reduce rate-limit risk
-    await new Promise(r => setTimeout(r, 1_500));
+    // Willekeurige pauze tussen hashtags (8–20 sec) om patroon te doorbreken
+    if (i < hashtags.length - 1 && !igBlocked) {
+      const pause = rand(8_000, 20_000);
+      console.log(`[Instagram] Pauze ${(pause/1000).toFixed(0)}s voor volgende hashtag…`);
+      await new Promise(r => setTimeout(r, pause));
+    }
+  }
+
+  // IG context sluiten na alle hashtags
+  if (igCtx) {
+    try { await igCtx.close(); } catch {}
   }
 
   // Deduplicate by id
@@ -482,9 +517,9 @@ async function getAllPosts(hashtags) {
 }
 
 async function reAuthInstagram() {
-  if (sharedBrowser) {
-    try { await sharedBrowser.close(); } catch {}
-    sharedBrowser = null;
+  if (igBrowser) {
+    try { await igBrowser.close(); } catch {}
+    igBrowser = null;
   }
   igBlocked = false;
   console.log('[Instagram] Browser herstart na sessie-update');
