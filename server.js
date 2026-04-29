@@ -106,7 +106,8 @@ function loadCache() {
     if (!fs.existsSync(CACHE_FILE)) return;
     const arr = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
     arr.forEach(p => postCache.set(p.id, p));
-    console.log(`[Cache] Loaded ${postCache.size} posts from disk`);
+    const breakdown = arr.reduce((a, p) => { a[p.platform] = (a[p.platform]||0)+1; return a; }, {});
+    console.log(`[Cache] Loaded ${postCache.size} posts from disk:`, JSON.stringify(breakdown));
   } catch (e) {
     console.error('[Cache] Load failed:', e.message);
   }
@@ -173,7 +174,8 @@ async function runScrape() {
       postCache.clear();
       sorted.slice(0, 500).forEach(([k, v]) => postCache.set(k, v));
     }
-    console.log(`[Scrape] Done in ${((Date.now()-t0)/1000).toFixed(1)}s – +${added} new, total: ${postCache.size}`);
+    const breakdown = Array.from(postCache.values()).reduce((a, p) => { a[p.platform] = (a[p.platform]||0)+1; return a; }, {});
+    console.log(`[Scrape] Done in ${((Date.now()-t0)/1000).toFixed(1)}s – +${added} new, total: ${postCache.size}`, JSON.stringify(breakdown));
     saveCache();
     broadcastAll();
     io.emit('scrape:done');
