@@ -9,6 +9,8 @@ services:
       - PORT=3001
       # Uncomment and set if serving under a sub-path instead of a subdomain:
       # - BASE_PATH=/4d
+      - BSKY_IDENTIFIER=${BSKY_IDENTIFIER}
+      - BSKY_APP_PASSWORD=${BSKY_APP_PASSWORD}
     volumes:
       # Sessions persist across deploys so cookies survive restarts
       - sessions:/app/sessions
