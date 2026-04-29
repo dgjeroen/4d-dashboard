@@ -486,7 +486,7 @@
   let showTT         = true;
   let showBsky       = true;
   let sortByLikes    = false;
-  let hideReviewed   = false;
+  let hideReviewed   = true;
   let requiredTags   = new Set();
   let activeTopic    = null;
   let newTags        = {
@@ -659,7 +659,7 @@
   }
   function toggleHideReviewed() {
     hideReviewed = !hideReviewed;
-    document.getElementById('hideBtn').classList.toggle('active', hideReviewed);
+    document.getElementById('hideBtn').classList.toggle('active', !hideReviewed);
     renderPosts();
   }
 
