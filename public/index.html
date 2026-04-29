@@ -197,10 +197,11 @@
     /* theme toggle */
     .theme-btn {
       padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border);
-      background: transparent; color: var(--muted); cursor: pointer; font-size: .75rem;
+      background: transparent; color: #f0a500; cursor: pointer; font-size: 1.1rem;
       line-height: 1; transition: all .12s;
     }
-    .theme-btn:hover { border-color: var(--border-hi); color: var(--text); }
+    .theme-btn:hover { border-color: var(--border-hi); filter: brightness(1.25); }
+    #suggestBar.hidden-by-user { display: none !important; }
 
     /* Hashtag bar */
     #hashtagBar {
@@ -449,6 +450,9 @@
 
       <!-- Hide reviewed -->
       <button class="fbtn" id="hideBtn" onclick="toggleHideReviewed()">👁 Beoordeeld</button>
+
+      <!-- Suggestions toggle -->
+      <button class="fbtn" id="suggestToggleBtn" onclick="toggleSuggestions()" title="Toon/verberg hashtag-suggesties">💡 Suggesties</button>
 
       <span id="stats"></span>
       <button class="fbtn refresh" id="refreshBtn" onclick="manualScrape()" title="Vernieuwt direct TikTok en Bluesky. (Het dashboard ververst automatisch iedere 5 minuten Bluesky, 10 minuten TikTok en 15 minuten Instagram.)">↻ Vernieuwen</button>
@@ -882,6 +886,15 @@
     const pills = document.getElementById('suggestPills');
     const tags = [...pills.querySelectorAll('.suggest-pill')].map(el => el.textContent.trim().match(/#(\S+)/)?.[1]).filter(Boolean);
     tags.forEach(tag => socket.emit('hashtag:reject', { tag }));
+  }
+
+  let suggestionsVisible = true;
+  function toggleSuggestions() {
+    suggestionsVisible = !suggestionsVisible;
+    const bar = document.getElementById('suggestBar');
+    const btn = document.getElementById('suggestToggleBtn');
+    bar.classList.toggle('hidden-by-user', !suggestionsVisible);
+    btn.classList.toggle('active', suggestionsVisible);
   }
 
   window.__pickGroup = function(tag, gA, gB) {
