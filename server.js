@@ -201,7 +201,12 @@ async function runBskyScrape() {
   if (bskyRunning || !activeTopic) return;
   bskyRunning = true;
   try {
-    const posts = await getBskyPosts(getHashtags());
+    // Bouw A×B combinaties voor gecombineerde Bluesky-zoekopdrachten (max 10)
+    const gA = activeTopic.groupA?.hashtags || [];
+    const gB = activeTopic.groupB?.hashtags || [];
+    const combos = [];
+    for (const a of gA) for (const b of gB) combos.push([a, b]);
+    const posts = await getBskyPosts(getHashtags(), combos.slice(0, 10));
     await ingestPosts(posts, 'bluesky');
   } catch (err) { console.error('[Scrape:bluesky]', err.message); }
   finally { bskyRunning = false; }

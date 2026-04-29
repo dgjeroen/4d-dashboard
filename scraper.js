@@ -411,25 +411,23 @@ function parseBskyPost(post) {
   };
 }
 
-async function scrapeBluesky(hashtag) {
+async function scrapeBluesky(queryStr, label) {
   const posts = [];
   try {
     const token = await getBskyToken();
     if (!token) {
-      // Stel BSKY_IDENTIFIER en BSKY_APP_PASSWORD in als omgevingsvariabelen
       console.warn('[Bluesky] Geen credentials – stel BSKY_IDENTIFIER en BSKY_APP_PASSWORD in');
       return posts;
     }
-    const q    = encodeURIComponent(`#${hashtag}`);
-    const host = token ? 'bsky.social' : 'public.api.bsky.app';
-    const url  = `https://${host}/xrpc/app.bsky.feed.searchPosts?q=${q}&limit=25&sort=latest`;
+    const q    = encodeURIComponent(queryStr);
+    const url  = `https://bsky.social/xrpc/app.bsky.feed.searchPosts?q=${q}&limit=25&sort=latest`;
     const data = await bskyRequest(url, token);
     for (const post of (data.posts || [])) {
       posts.push(parseBskyPost(post));
     }
-    console.log(`[Bluesky] #${hashtag} → ${posts.length} posts`);
+    console.log(`[Bluesky] ${label} → ${posts.length} posts`);
   } catch (err) {
-    console.warn(`[Bluesky] #${hashtag}: ${err.message}`);
+    console.warn(`[Bluesky] ${label}: ${err.message}`);
   }
   return posts;
 }
@@ -513,11 +511,16 @@ async function getTikTokPosts(hashtags) {
   return dedup(results);
 }
 
-async function getBskyPosts(hashtags) {
+async function getBskyPosts(hashtags, combos = []) {
   const results = [];
   for (const tag of hashtags) {
-    const posts = await scrapeBluesky(tag);
+    const posts = await scrapeBluesky(`#${tag}`, `#${tag}`);
     stampTag(posts, tag.toLowerCase());
+    results.push(...posts);
+  }
+  // Zoek ook op combinaties (levert posts op die alleen door de AND te vinden zijn)
+  for (const [a, b] of combos) {
+    const posts = await scrapeBluesky(`#${a} #${b}`, `#${a}+#${b}`);
     results.push(...posts);
   }
   return dedup(results);

@@ -203,6 +203,29 @@
     .theme-btn:hover { border-color: var(--border-hi); filter: brightness(1.25); }
     #suggestBar.hidden-by-user { display: none !important; }
 
+    /* ── Combinaties bar ─────────────────────────────────────────────────── */
+    #comboBar {
+      padding: 5px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+      display: none; flex-wrap: wrap; gap: 5px; align-items: center; font-size: .69rem;
+    }
+    .combo-label {
+      font-size: .65rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); white-space: nowrap; margin-right: 4px;
+    }
+    .combo-pill {
+      display: inline-flex; align-items: center; gap: 5px; border-radius: 5px;
+      padding: 3px 10px; background: var(--surface); color: var(--text-2);
+      border: 1px solid var(--border); font-size: .72rem; font-weight: 600;
+      cursor: pointer; transition: all .12s;
+    }
+    .combo-pill:hover { border-color: var(--accent); color: var(--accent); }
+    .combo-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .combo-count {
+      font-size: .65rem; font-weight: 400; color: var(--muted);
+      background: var(--bg); border-radius: 4px; padding: 0 4px;
+    }
+    .combo-pill.active .combo-count { color: rgba(255,255,255,.8); background: rgba(0,0,0,.15); }
+
     /* Hashtag bar */
     #hashtagBar {
       background: var(--surface); border-bottom: 1px solid var(--border);
@@ -242,6 +265,7 @@
     .req-pill:hover { filter: brightness(1.2); }
 
     /* ── Hashtag suggestions bar ──────────────────────────────────────────── */
+    #suggestBar {
     #suggestBar {
       padding: 5px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
       display: none; flex-wrap: wrap; gap: 5px; align-items: center; font-size: .69rem;
@@ -472,6 +496,10 @@
       <span id="suggestPills"></span>
       <button class="sp-dismiss-all" id="dismissAllBtn" onclick="dismissAllSuggestions()" title="Alle suggesties afwijzen">Alles afwijzen</button>
     </div>
+    <div id="comboBar">
+      <span class="combo-label">🔗 Combinaties</span>
+      <span id="comboPills"></span>
+    </div>
   </div>
 
   <div id="feed"></div>
@@ -617,11 +645,13 @@
     if (requiredTags.has(tag)) requiredTags.delete(tag);
     else requiredTags.add(tag);
     renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
+    renderReqBar();
     renderPosts();
   }
   function clearRequired() {
     requiredTags.clear();
     renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
+    renderReqBar();
     renderPosts();
   }
   function renderReqBar() {
@@ -752,12 +782,61 @@
     if (!list.length) {
       const reason = allPosts.length === 0 ? 'Nog geen posts binnen.' : `${allPosts.length} posts aanwezig maar verborgen door actieve filters.`;
       feed.innerHTML = `<div class="empty"><h2>Geen posts gevonden</h2><p>${reason}</p></div>`;
+      computeAndRenderCombos();
       return;
     }
     try {
       const html = list.map(cardHtml).join('');
       feed.innerHTML = html;
       console.log(`[feed] DOM children: ${feed.children.length}, app display: ${document.getElementById('app').style.display}, first post id: ${list[0]?.id}`);
+    } catch(e) {
+      console.error('[renderPosts] cardHtml fout:', e);
+      feed.innerHTML = list.map(p => {
+        try { return cardHtml(p); }
+        catch(e2) { return `<div class="card" style="padding:14px;color:var(--red)">⚠️ Render error voor post ${p.id}: ${e2.message}</div>`; }
+      }).join('');
+    }
+    list.forEach(p => knownIds.add(p.id));
+    computeAndRenderCombos();
+  }
+
+  function computeAndRenderCombos() {
+    const gA  = activeTopic?.groupA?.hashtags || [];
+    const gB  = activeTopic?.groupB?.hashtags || [];
+    const bar = document.getElementById('comboBar');
+    if (!gA.length || !gB.length) { bar.style.display = 'none'; return; }
+    const combos = [];
+    for (const a of gA) {
+      for (const b of gB) {
+        const count = allPosts.filter(p => {
+          const tags = new Set(p.hashtags || []);
+          return tags.has(a) && tags.has(b);
+        }).length;
+        if (count > 0) combos.push({ a, b, count });
+      }
+    }
+    combos.sort((x, y) => y.count - x.count);
+    if (!combos.length) { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    document.getElementById('comboPills').innerHTML = combos.slice(0, 12).map(c => {
+      const isActive = requiredTags.has(c.a) && requiredTags.has(c.b);
+      return `<span class="combo-pill${isActive ? ' active' : ''}" onclick="applyCombo('${esc(c.a)}','${esc(c.b)}')" title="Toon posts met #${esc(c.a)} én #${esc(c.b)}">#${esc(c.a)} + #${esc(c.b)} <span class="combo-count">${c.count}</span></span>`;
+    }).join('');
+  }
+
+  function applyCombo(a, b) {
+    // Toggle: als deze combo al actief is, wis filter
+    if (requiredTags.has(a) && requiredTags.has(b) && requiredTags.size === 2) {
+      requiredTags.clear();
+    } else {
+      requiredTags.clear();
+      requiredTags.add(a);
+      requiredTags.add(b);
+    }
+    renderHashtagBar(activeTopic, activeTopic?.hashtags || []);
+    renderReqBar();
+    renderPosts();
+  }
     } catch(e) {
       console.error('[renderPosts] cardHtml fout:', e);
       feed.innerHTML = list.map(p => {
