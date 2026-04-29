@@ -111,6 +111,10 @@ function parseInstagramMedia(media) {
 }
 
 async function scrapeInstagram(hashtag) {
+  if (igBlocked) {
+    console.log(`[Instagram] Overgeslagen (geblokkeerd) – #${hashtag}`);
+    return [];
+  }
   const ctx  = await createContext('instagram');
   const page = await ctx.newPage();
   const posts = [];
@@ -225,8 +229,10 @@ async function scrapeInstagram(hashtag) {
     const finalUrl = page.url();
     console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
     if (finalUrl.includes('/challenge/') || finalUrl.includes('/accounts/login')) {
-      console.warn(`[Instagram] Geblokkeerd voor #${hashtag}`);
+      console.warn(`[Instagram] Geblokkeerd voor #${hashtag} → sessie NIET overschreven`);
       igBlocked = true;
+      // Sla sessie NIET op – anders worden geldige cookies overschreven met challenge-cookies
+      return posts;
     }
     // Als doorgestuurd naar zoekpagina: ook de zoek-URL laden voor betere API coverage
     if (finalUrl.includes('/explore/search/') || finalUrl.includes('/explore/search/keyword')) {
