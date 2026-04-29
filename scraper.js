@@ -133,18 +133,11 @@ async function scrapeInstagram(hashtag) {
       url.includes('web/search/') ||
       url.includes('bloks/apps/com.instagram.search');
 
-    // Log ALL instagram API calls (debug)
-    console.log(`[IG-DEBUG] ${res.status()} ${url.slice(0, 120)}`);
-
     if (!isRelevant) return;
 
     try {
       const data = await res.json();
       const before = posts.length;
-      // Log top-level keys + data keys to find structure
-      const topKeys = Object.keys(data).join(', ');
-      const dataKeys = data.data ? Object.keys(data.data).join(', ') : '-';
-      console.log(`[IG-DEBUG] keys: {${topKeys}} | data: {${dataKeys}}`);
 
       // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
@@ -327,8 +320,12 @@ function bskyGet(url) {
       let body = '';
       res.on('data', d => body += d);
       res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
         try { resolve(JSON.parse(body)); }
-        catch (e) { reject(e); }
+        catch (e) { reject(new Error(`Geen JSON (response begint met: ${body.slice(0, 60)})`)); }
       });
     }).on('error', reject);
   });
