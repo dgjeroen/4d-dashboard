@@ -337,20 +337,23 @@ io.on('connection', (socket) => {
     io.emit('hashtags:suggestions', getSuggestions());
   });
 
-  socket.on('scrape:now', () => {
-    const COOLDOWN = 90_000; // 90 seconds
+  // Vernieuwen-knop: alleen TikTok + Bluesky (Instagram scrapet automatisch om blokkade te voorkomen)
+  socket.on('scrape:now:fast', () => {
+    const COOLDOWN = 60_000;
     const elapsed  = Date.now() - lastManualScrape;
     if (elapsed < COOLDOWN) {
       socket.emit('scrape:cooldown', Math.ceil((COOLDOWN - elapsed) / 1000));
       return;
     }
-    if (scrapeRunning) {
-      socket.emit('scrape:cooldown', 0); // already running, just wait
+    if (ttRunning || bskyRunning) {
+      socket.emit('scrape:cooldown', 0);
       return;
     }
     lastManualScrape = Date.now();
     socket.emit('scrape:started');
-    runScrape();
+    Promise.all([runTikTokScrape(), runBskyScrape()])
+      .then(() => socket.emit('scrape:done'))
+      .catch(err => console.error('[scrape:now:fast]', err.message));
   });
 
   socket.on('disconnect', () => {

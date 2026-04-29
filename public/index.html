@@ -451,7 +451,7 @@
       <button class="fbtn" id="hideBtn" onclick="toggleHideReviewed()">👁 Beoordeeld</button>
 
       <span id="stats"></span>
-      <button class="fbtn refresh" id="refreshBtn" onclick="manualScrape()">↻ Vernieuwen</button>
+      <button class="fbtn refresh" id="refreshBtn" onclick="manualScrape()" title="Vernieuwt TikTok en Bluesky. Instagram scrapet automatisch elke 15 minuten.">↻ Vernieuwen</button>
       <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Schakel licht/donker">☀</button>
       <button class="hdr-btn" onclick="switchTopic()">⇄ Wissel</button>
     </header>
@@ -815,17 +815,17 @@
     renderPosts();
   });
 
-  // ── Manual refresh ─────────────────────────────────────────────────────────
+  // ── Manual refresh (TikTok + Bluesky only, Instagram scrapet automatisch) ──
   let refreshTimer = null;
   function manualScrape() {
     const btn = document.getElementById('refreshBtn');
     if (btn.classList.contains('loading')) return;
-    socket.emit('scrape:now');
+    socket.emit('scrape:now:fast');
   }
   socket.on('scrape:started', () => {
     const btn = document.getElementById('refreshBtn');
     btn.classList.add('loading');
-    btn.textContent = '↻ Bezig…';
+    btn.textContent = '↻ TikTok & Bsky…';
   });
   socket.on('scrape:cooldown', secs => {
     const btn = document.getElementById('refreshBtn');
