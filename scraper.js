@@ -133,11 +133,18 @@ async function scrapeInstagram(hashtag) {
       url.includes('web/search/') ||
       url.includes('bloks/apps/com.instagram.search');
 
+    // Log ALL instagram API calls (debug)
+    console.log(`[IG-DEBUG] ${res.status()} ${url.slice(0, 120)}`);
+
     if (!isRelevant) return;
 
     try {
       const data = await res.json();
       const before = posts.length;
+      // Log top-level keys + data keys to find structure
+      const topKeys = Object.keys(data).join(', ');
+      const dataKeys = data.data ? Object.keys(data.data).join(', ') : '-';
+      console.log(`[IG-DEBUG] keys: {${topKeys}} | data: {${dataKeys}}`);
 
       // v1 sections API (tags endpoint)
       for (const section of (data.sections || [])) {
