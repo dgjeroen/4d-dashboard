@@ -294,10 +294,7 @@ io.on('connection', (socket) => {
   socket.on('hashtag:approve', ({ tag, group }) => {
     if (!activeTopic) return;
     approveSuggestion(tag);
-    // Voeg toe aan de juiste groep in het topic
     activeTopic = addHashtagToGroup(activeTopic.id, tag, group || 'a');
-    setHashtags(getHashtags().concat(tag).filter((v,i,a) => a.indexOf(v)===i));
-    activeTopic = topics.updateHashtags(activeTopic.id, getHashtags());
     io.emit('hashtags:update',      getHashtags());
     io.emit('hashtags:suggestions', getSuggestions());
     io.emit('topic:active',         topics.summary(activeTopic));

@@ -605,7 +605,7 @@
         const cls  = setA.has(t) ? 'a' : setB.has(t) ? 'b' : 'disc';
         const core = coreSet.has(t) ? ' core' : '';
         const req  = requiredTags.has(t) ? ' required' : '';
-        return `<span class="hpill ${cls}${core}${req}" onclick="toggleRequired('${t}')" title="${core ? 'Kernhashtag – kan niet worden verwijderd' : 'Klik om te filteren'}">#${esc(t)}<span class="hx" onclick="event.stopPropagation();toggleHashtag('${t}')">×</span></span>`;
+        return `<span class="hpill ${cls}${core}${req}" onclick="toggleRequired('${t}')" title="${core ? 'Kernhashtag – kan niet worden verwijderd' : 'Klik om te filteren'}">#${esc(t)}<span class="hx" onclick="event.stopPropagation();toggleHashtag('${t}')">✗</span></span>`;
       }).join('');
     renderReqBar();
   }
@@ -864,7 +864,7 @@
         #${esc(s.tag)}
         <span class="sp-count">${s.count}×</span>
         <span class="sp-ok" onclick="approveHashtag('${s.tag}')" title="Toevoegen aan groep…">✓</span>
-        <span class="sp-no" onclick="rejectHashtag('${s.tag}')" title="Afwijzen">✕</span>
+        <span class="sp-no" onclick="rejectHashtag('${s.tag}')" title="Afwijzen">✗</span>
       </span>`).join('');
   });
 
