@@ -39,6 +39,29 @@ if (process.env.AUTH_ENABLED === '1') {
 // ─── Instagram session upload ─────────────────────────────────────────────────────────────
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
+function normalizeSameSite(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'strict') return 'Strict';
+  if (normalized === 'none' || normalized === 'no_restriction' || normalized === 'unspecified') return 'None';
+  return 'Lax';
+}
+
+function normalizeStorageState(storageState) {
+  const cookies = Array.isArray(storageState?.cookies) ? storageState.cookies : [];
+  return {
+    ...storageState,
+    cookies: cookies.map(cookie => {
+      const sameSite = normalizeSameSite(cookie.sameSite);
+      return {
+        ...cookie,
+        sameSite,
+        secure: sameSite === 'None' ? true : Boolean(cookie.secure),
+      };
+    }),
+    origins: Array.isArray(storageState?.origins) ? storageState.origins : [],
+  };
+}
+
 app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'Geen bestand' });
@@ -48,10 +71,10 @@ app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (re
     // Accepteer zowel Playwright storageState als Cookie-Editor export
     let storageState;
     if (json.cookies !== undefined && json.origins !== undefined) {
-      storageState = json; // al een Playwright storageState
+      storageState = normalizeStorageState(json); // al een Playwright storageState
     } else if (Array.isArray(json)) {
       // Cookie-Editor export → omzetten naar Playwright storageState
-      storageState = {
+      storageState = normalizeStorageState({
         cookies: json.map(c => ({
           name:     c.name,
           value:    c.value,
@@ -60,10 +83,10 @@ app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (re
           expires:  c.expirationDate || c.expires || -1,
           httpOnly: c.httpOnly      || false,
           secure:   c.secure        || false,
-          sameSite: c.sameSite      || 'Lax',
+          sameSite: c.sameSite,
         })),
         origins: [],
-      };
+      });
     } else {
       return res.status(400).json({ ok: false, error: 'Ongeldig formaat. Upload een Playwright storageState of Cookie-Editor JSON.' });
     }
