@@ -1108,7 +1108,12 @@
       const res  = await fetch(`${APP_BASE}/instagram/upload-session`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.ok) {
-        setIgSessionStatus('✅ Sessie bijgewerkt!', 'success');
+        setIgSessionStatus(
+          data.triggeredScrape
+            ? '✅ Sessie bijgewerkt. Instagram wordt nu direct gecontroleerd...'
+            : '✅ Sessie bijgewerkt!',
+          'success'
+        );
         setTimeout(() => { setIgSessionStatus(''); }, 5000);
       } else {
         setIgSessionStatus(`❌ ${data.error}`, 'error');

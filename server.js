@@ -77,7 +77,16 @@ app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (re
     console.log('[Instagram] Sessie bijgewerkt via upload');
 
     await reAuthInstagram();
-    res.json({ ok: true });
+    const triggeredScrape = Boolean(activeTopic) && !igRunning;
+    if (triggeredScrape) {
+      setTimeout(() => {
+        runInstagramScrape().catch(err => {
+          console.error('[Instagram] Directe controle na upload mislukt:', err.message);
+        });
+      }, 1500);
+    }
+
+    res.json({ ok: true, triggeredScrape });
   } catch (err) {
     console.error('[Instagram] Upload fout:', err.message);
     res.status(500).json({ ok: false, error: err.message });
