@@ -463,6 +463,7 @@
       <button class="hdr-btn" onclick="openIgSessionPicker()" title="Upload een nieuwe Instagram-sessie JSON" style="margin-left:auto;">📂 Insta-sessie uploaden</button>
       <input id="igSessionInput" type="file" accept=".json" onchange="uploadIgSession(this)" style="display:none">
       <span id="igSessionStatus" style="font-size:.72rem;color:var(--muted);white-space:nowrap;display:none"></span>
+      <div id="igDiagnostics" style="width:100%;margin-top:6px;font-size:.74rem;color:var(--muted);line-height:1.5;"></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -1114,6 +1115,23 @@
     document.getElementById('igSessionInput')?.click();
   }
 
+  function renderIgDiagnostics(data = {}) {
+    const el = document.getElementById('igDiagnostics');
+    if (!el) return;
+    const lastRun = data.lastRunAt
+      ? new Date(data.lastRunAt).toLocaleString('nl-NL', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit' })
+      : 'nog niet uitgevoerd';
+    const trigger = data.lastTrigger || 'onbekend';
+    const terms = (data.lastTerms || []).length ? (data.lastTerms || []).map(t => `#${esc(t)}`).join(' ') : 'geen';
+    const status = data.running ? 'bezig' : (data.blocked ? 'geblokkeerd' : 'gereed');
+    const error = data.lastError ? `<div>Fout: ${esc(data.lastError)}</div>` : '';
+    el.innerHTML = `
+      <div>Status: <strong>${esc(status)}</strong> · Trigger: <strong>${esc(trigger)}</strong> · Laatste check: <strong>${esc(lastRun)}</strong></div>
+      <div>Instagram-resultaat: <strong>${Number(data.lastFetched || 0)}</strong> opgehaald, <strong>${Number(data.lastAdded || 0)}</strong> toegevoegd, <strong>${Number(data.lastSkipped || 0)}</strong> overgeslagen</div>
+      <div>Gezochte hashtags: ${terms}</div>
+      ${error}`;
+  }
+
   // ── Instagram session upload ───────────────────────────────────────────────────
   async function uploadIgSession(input) {
     const file = input.files[0];
@@ -1153,6 +1171,10 @@
         bannerStatus.style.display = 'none';
       }
     }
+  });
+
+  socket.on('instagram:diagnostics', data => {
+    renderIgDiagnostics(data || {});
   });
 </script>
 </body>

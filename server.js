@@ -75,12 +75,14 @@ app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (re
     setIgBlocked(false);
     io.emit('instagram:status', { blocked: false });
     console.log('[Instagram] Sessie bijgewerkt via upload');
+    igDiagnostics = { ...igDiagnostics, blocked: false, lastError: '' };
+    emitInstagramDiagnostics();
 
     await reAuthInstagram();
     const triggeredScrape = Boolean(activeTopic) && !igRunning;
     if (triggeredScrape) {
       setTimeout(() => {
-        runInstagramScrape().catch(err => {
+        runInstagramScrape('upload').catch(err => {
           console.error('[Instagram] Directe controle na upload mislukt:', err.message);
         });
       }, 1500);
@@ -106,6 +108,17 @@ const CACHE_FILE     = path.join(SESSIONS_DIR, 'postcache.json');
 const postCache      = new Map();
 let   activeTopic    = null;
 let   lastManualScrape = 0;
+let   igDiagnostics  = {
+  running: false,
+  blocked: false,
+  lastRunAt: null,
+  lastTrigger: null,
+  lastFetched: 0,
+  lastAdded: 0,
+  lastSkipped: 0,
+  lastError: '',
+  lastTerms: [],
+};
 
 // ─── Cache persistence ────────────────────────────────────────────────────────
 function saveCache() {
@@ -159,6 +172,11 @@ function postsWithStatus() {
     .map(p => ({ ...p, reviewStatus: reviewed[p.id] || null, group: classifyGroup(p) }));
 }
 
+function emitInstagramDiagnostics() {
+  igDiagnostics.blocked = getIgBlocked();
+  io.emit('instagram:diagnostics', igDiagnostics);
+}
+
 // ─── Broadcast ────────────────────────────────────────────────────────────────
 function broadcastAll() {
   if (activeTopic) io.emit('topic:active', topics.summary(activeTopic));
@@ -166,6 +184,7 @@ function broadcastAll() {
   io.emit('hashtags:suggestions', getSuggestions());
   io.emit('posts:update',       postsWithStatus());
   io.emit('instagram:status',   { blocked: getIgBlocked() });
+  emitInstagramDiagnostics();
 }
 
 // ─── Scrape cycle ─────────────────────────────────────────────────────────────
@@ -197,16 +216,41 @@ async function ingestPosts(newPosts, label) {
     broadcastAll();
     io.emit('scrape:done');
   }
+  return { added, skipped, total: postCache.size };
 }
 
-async function runInstagramScrape() {
+async function runInstagramScrape(trigger = 'cron') {
   if (igRunning || !activeTopic) return;
   igRunning = true;
+  igDiagnostics = {
+    ...igDiagnostics,
+    running: true,
+    blocked: getIgBlocked(),
+    lastRunAt: Date.now(),
+    lastTrigger: trigger,
+    lastFetched: 0,
+    lastAdded: 0,
+    lastSkipped: 0,
+    lastError: '',
+    lastTerms: getHashtags(),
+  };
+  emitInstagramDiagnostics();
   try {
     const posts = await getInstagramPosts(getHashtags());
-    await ingestPosts(posts, 'instagram');
-  } catch (err) { console.error('[Scrape:instagram]', err.message); }
-  finally { igRunning = false; }
+    igDiagnostics.lastFetched = posts.length;
+    const result = await ingestPosts(posts, 'instagram');
+    igDiagnostics.lastAdded = result?.added || 0;
+    igDiagnostics.lastSkipped = result?.skipped || 0;
+    igDiagnostics.blocked = getIgBlocked();
+  } catch (err) {
+    igDiagnostics.lastError = err.message;
+    igDiagnostics.blocked = getIgBlocked();
+    console.error('[Scrape:instagram]', err.message);
+  } finally {
+    igRunning = false;
+    igDiagnostics.running = false;
+    emitInstagramDiagnostics();
+  }
 }
 
 async function runTikTokScrape() {
@@ -257,6 +301,7 @@ io.on('connection', (socket) => {
   // Always send topic list so launcher can populate
   socket.emit('topics:list',    topics.list().map(topics.summary));
   socket.emit('instagram:status', { blocked: getIgBlocked() });
+  socket.emit('instagram:diagnostics', igDiagnostics);
 
   // If a topic is already active, send current state immediately
   if (activeTopic) {
