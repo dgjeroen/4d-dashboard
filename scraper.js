@@ -190,6 +190,38 @@ async function humanScroll(page) {
   }
 }
 
+async function looksLikeInstagramAuthWall(page) {
+  const url = page.url();
+  if (url.includes('/challenge/') || url.includes('/accounts/login')) return true;
+
+  try {
+    return await page.evaluate(() => {
+      const text = (document.body?.innerText || '').toLowerCase();
+      const hasLoginInput = Boolean(
+        document.querySelector('input[name="username"], input[name="password"]')
+      );
+      const authHints = [
+        'log in',
+        'login',
+        'inloggen',
+        'meld je aan',
+        'sign up',
+        'sign in',
+        'continue as',
+        'continueer als',
+      ];
+      const hasAuthText = authHints.some(hint => text.includes(hint));
+      const loginLinks = Array.from(document.querySelectorAll('a[href], button'))
+        .some(el => ((el.getAttribute('href') || '') + ' ' + (el.textContent || '')).toLowerCase().includes('login')
+          || ((el.getAttribute('href') || '') + ' ' + (el.textContent || '')).toLowerCase().includes('log in')
+          || ((el.getAttribute('href') || '') + ' ' + (el.textContent || '')).toLowerCase().includes('inloggen'));
+      return hasLoginInput || (hasAuthText && loginLinks);
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function scrapeInstagram(hashtag, igCtx) {
   if (igBlocked) {
     console.log(`[Instagram] Overgeslagen (geblokkeerd) – #${hashtag}`);
@@ -228,7 +260,7 @@ async function scrapeInstagram(hashtag, igCtx) {
     const finalUrl = page.url();
     console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
 
-    if (finalUrl.includes('/challenge/') || finalUrl.includes('/accounts/login')) {
+    if (await looksLikeInstagramAuthWall(page)) {
       console.warn(`[Instagram] Geblokkeerd – sessie NIET overschreven`);
       igBlocked = true;
       return posts;
@@ -238,6 +270,12 @@ async function scrapeInstagram(hashtag, igCtx) {
     await page.waitForTimeout(rand(1500, 3000));
     await humanScroll(page);
     await page.waitForTimeout(rand(1000, 2500));
+
+    if (posts.length === 0 && await looksLikeInstagramAuthWall(page)) {
+      console.warn(`[Instagram] Login-wall gedetecteerd zonder API-responses – sessie ongeldig`);
+      igBlocked = true;
+      return posts;
+    }
 
     // Opslaan alleen als niet geblokkeerd
     await saveSession(igCtx, 'instagram');
