@@ -611,7 +611,17 @@ function stampTag(posts, tagLower) {
 
 async function getInstagramPosts(hashtags) {
   const results = [];
-  if (igBlocked) return results;
+  if (igBlocked) {
+    igDebugInfo = {
+      ...igDebugInfo,
+      finalUrl: 'instagram:block-flag',
+      pageTitle: 'Instagram geblokkeerd',
+      domPostLinks: 0,
+      bodySnippet: 'Instagram-scrape overgeslagen omdat de sessie al als geblokkeerd staat gemarkeerd.',
+      authWall: true,
+    };
+    return results;
+  }
 
   let igCtx = null;
   try {
@@ -625,6 +635,14 @@ async function getInstagramPosts(hashtags) {
     });
     igBrowserUses++;
   } catch (err) {
+    igDebugInfo = {
+      ...igDebugInfo,
+      finalUrl: 'instagram:browser-start',
+      pageTitle: 'Browser/context start mislukt',
+      domPostLinks: 0,
+      bodySnippet: err.message,
+      authWall: false,
+    };
     console.warn('[Instagram] Browser starten mislukt:', err.message);
     return results;
   }
