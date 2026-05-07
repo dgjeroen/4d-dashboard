@@ -833,7 +833,12 @@
     try {
       const html = list.map(cardHtml).join('');
       feed.innerHTML = html;
-      console.log(`[feed] DOM children: ${feed.children.length}, app display: ${document.getElementById('app').style.display}, first post id: ${list[0]?.id}`);
+      const app = document.getElementById('app');
+      const launcher = document.getElementById('launcher');
+      const appDisplay = app ? getComputedStyle(app).display : '(geen app)';
+      const feedDisplay = getComputedStyle(feed).display;
+      const launcherDisplay = launcher ? getComputedStyle(launcher).display : '(geen launcher)';
+      console.log(`[feed] DOM children: ${feed.children.length}, app computed: ${appDisplay}, feed computed: ${feedDisplay}, launcher computed: ${launcherDisplay}, inManageView=${inManageView}, first post id: ${list[0]?.id}`);
     } catch(e) {
       console.error('[renderPosts] cardHtml fout:', e);
       feed.innerHTML = list.map(p => {
