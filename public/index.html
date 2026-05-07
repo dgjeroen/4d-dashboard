@@ -545,6 +545,7 @@
   let hideReviewed   = true;
   let requiredTags   = new Set();
   let activeTopic    = null;
+  let inManageView   = false;
   let newTags        = {
     a: ['4daagse','nijmeegsevierdaagse','vierdaagse','nijmegen','vierdaagse2025'],
     b: ['vierdaagsefeesten','4daagsefeesten'],
@@ -618,6 +619,7 @@
     const name = document.getElementById('topicNameInput').value.trim();
     if (!name) { alert('Geef het onderwerp een naam.'); return; }
     if (!newTags.a.length && !newTags.b.length) { alert('Voeg minimaal één hashtag toe.'); return; }
+    inManageView = false;
     const payload = {
       name,
       groupA: { name: document.getElementById('groupAName').value || 'Groep A', hashtags: [...newTags.a] },
@@ -636,7 +638,10 @@
     document.querySelector('#createForm .btn-start').textContent = 'Starten';
     editingTopicId = null;
   }
-  function selectTopic(id) { socket.emit('topic:select', { id }); }
+  function selectTopic(id) {
+    inManageView = false;
+    socket.emit('topic:select', { id });
+  }
 
   let editingTopicId = null;
   function editTopic(id) {
@@ -655,6 +660,7 @@
     document.getElementById('topicNameInput').focus();
   }
   function switchTopic() {
+    inManageView = true;
     document.getElementById('launcher').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
     // Toon beheersectie als er een actief topic is
@@ -940,8 +946,18 @@
     document.getElementById('topicName').textContent = t.name;
     document.getElementById('fA').textContent = t.groupA.name;
     document.getElementById('fB').textContent = t.groupB.name;
-    document.getElementById('launcher').style.display = 'none';
-    document.getElementById('app').style.display      = 'block';
+    const launcher = document.getElementById('launcher');
+    const app = document.getElementById('app');
+    const manage = document.getElementById('launcherManage');
+    if (inManageView) {
+      launcher.style.display = 'flex';
+      app.style.display = 'none';
+      if (manage) manage.style.display = 'block';
+    } else {
+      launcher.style.display = 'none';
+      app.style.display = 'block';
+      if (manage) manage.style.display = 'none';
+    }
     renderCombos();
     if (allPosts.length) renderPosts();
   });
@@ -1045,6 +1061,7 @@
     const gB = activeTopic.groupB?.name || 'B';
     window.__pickGroup(tag, gA, gB).then(choice => {
       if (choice === null) return;
+      inManageView = true;
       socket.emit('hashtag:approve', { tag, group: choice });
     });
   }
@@ -1060,7 +1077,7 @@
   window.__pickGroup = function(tag, gA, gB) {
     // Inline groepkeuze zonder externe modal
     const d = document.createElement('dialog');
-    d.style.cssText = 'border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);padding:20px 24px;min-width:220px;text-align:center;';
+    d.style.cssText = 'position:fixed;inset:0;margin:auto;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);padding:20px 24px;min-width:220px;max-width:min(92vw,360px);text-align:center;';
     d.innerHTML = `<p style="margin:0 0 14px;font-size:.9rem;">Voeg <strong>#${esc(tag)}</strong> toe aan:</p>
       <div style="display:flex;gap:10px;justify-content:center;">
         <button id="__pgA" style="flex:1;padding:8px 0;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:700;">${esc(gA)}</button>
