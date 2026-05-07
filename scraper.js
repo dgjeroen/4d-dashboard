@@ -293,8 +293,17 @@ async function scrapeInstagram(hashtag, igCtx) {
     return [];
   }
 
-  const sessionFile = `${SESSIONS_DIR}/instagram.json`;
+  const tagUrl = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
   const posts = [];
+
+  igDebugInfo = {
+    ...igDebugInfo,
+    finalUrl: tagUrl,
+    pageTitle: '',
+    domPostLinks: 0,
+    bodySnippet: '',
+    authWall: false,
+  };
 
   // Hergebruik de meegegeven context (gedeeld over hashtags)
   const page = await igCtx.newPage();
@@ -320,7 +329,6 @@ async function scrapeInstagram(hashtag, igCtx) {
   });
 
   try {
-    const tagUrl = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
     await page.goto(tagUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
     const finalUrl = page.url();
     console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
@@ -374,6 +382,21 @@ async function scrapeInstagram(hashtag, igCtx) {
     // Opslaan alleen als niet geblokkeerd
     await saveSession(igCtx, 'instagram');
   } catch (err) {
+    let pageTitle = '';
+    let bodySnippet = '';
+    let finalUrl = tagUrl;
+    try { finalUrl = page.url() || tagUrl; } catch {}
+    try { pageTitle = await page.title(); } catch {}
+    try {
+      bodySnippet = await page.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 240));
+    } catch {}
+    igDebugInfo = {
+      ...igDebugInfo,
+      finalUrl,
+      pageTitle,
+      domPostLinks: 0,
+      bodySnippet: bodySnippet || err.message,
+    };
     console.warn(`[Instagram] #${hashtag}: ${err.message}`);
   } finally {
     await page.close();
