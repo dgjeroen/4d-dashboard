@@ -446,6 +446,11 @@ function dedup(results) {
 }
 
 function stampTag(posts, tagLower) {
+  // Instagram hashtag pages only show posts that genuinely belong to that tag,
+  // but the API sometimes returns an empty caption — ensure the tag is present
+  // so the server-side activeTagSet filter doesn't wrongly discard the post.
+  // For TikTok this function is intentionally NOT called (TikTok shows
+  // algorithmically related posts that may not actually carry the hashtag).
   posts.forEach(p => { if (!p.hashtags.includes(tagLower)) p.hashtags.push(tagLower); });
 }
 
@@ -504,7 +509,9 @@ async function getTikTokPosts(hashtags) {
   const results = [];
   for (const tag of hashtags) {
     const posts = await scrapeTikTok(tag);
-    stampTag(posts, tag.toLowerCase());
+    // stampTag intentionally omitted: TikTok shows algorithmically related
+    // posts that may not carry the hashtag in their caption. Only posts that
+    // genuinely contain the hashtag are allowed through.
     results.push(...posts);
     await new Promise(r => setTimeout(r, 1_500));
   }

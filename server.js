@@ -12,15 +12,28 @@ const { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlock
 const { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions } = require('./hashtags');
 const topics = require('./topics');
 const { addHashtagToGroup, addCombo, removeCombo } = topics;
+const requireAuth = require('./auth');
 
 const app    = express();
 const server = http.createServer(app);
 
 const BASE = (process.env.BASE_PATH || '').replace(/\/+$/, '');
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const io = new Server(server, {
   path: `${BASE}/socket.io`,
 });
+
+function renderIndex(req, res) {
+  const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8')
+    .replace('</head>', `<script>window.__BASE="${BASE}";</script></head>`);
+  res.send(html);
+}
+
+// ─── Auth (centraal via adrlab.cloud) ────────────────────────────────────────
+if (process.env.AUTH_ENABLED !== '0') {
+  app.use(requireAuth);
+}
 
 // ─── Instagram session upload ─────────────────────────────────────────────────────────────
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
@@ -71,15 +84,10 @@ app.post(`${BASE}/instagram/upload-session`, upload.single('session'), async (re
 });
 
 if (BASE) {
-  app.use(BASE, express.static(path.join(__dirname, 'public')));
-  app.get(BASE, (req, res) => {
-    const html = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf8')
-      .replace('</head>', `<script>window.__BASE="${BASE}";</script></head>`);
-    res.send(html);
-  });
-  app.get(`${BASE}/`, (req, res) => res.redirect(BASE));
+  app.get([BASE, `${BASE}/`], renderIndex);
+  app.use(BASE, express.static(PUBLIC_DIR, { index: false }));
 } else {
-  app.use(express.static(path.join(__dirname, 'public')));
+  app.use(express.static(PUBLIC_DIR));
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -339,7 +347,15 @@ io.on('connection', (socket) => {
 
   socket.on('hashtag:reject', ({ tag }) => {
     trackRemoval(tag);
+    // Purge cached posts that no longer match any active hashtag
+    const tagSet = new Set(getHashtags());
+    let purged = 0;
+    for (const [id, post] of postCache.entries()) {
+      if (!(post.hashtags || []).some(t => tagSet.has(t))) { postCache.delete(id); purged++; }
+    }
+    if (purged > 0) { console.log(`[Hashtags] Purged ${purged} posts after rejecting #${tag}`); saveCache(); }
     io.emit('hashtags:suggestions', getSuggestions());
+    if (purged > 0) io.emit('posts:update', postsWithStatus());
   });
 
   // ── Combinaties beheren ────────────────────────────────────────────────────

@@ -11,10 +11,16 @@ services:
       # - BASE_PATH=/4d
       - BSKY_IDENTIFIER
       - BSKY_APP_PASSWORD
+      - SESSION_SECRET
+      - SESSIONS_DIR=/app/sessions
+      - TOPICS_DIR=/app/topics
     volumes:
-      # Sessions persist across deploys so cookies survive restarts
+      # Sessions (Instagram/TikTok cookies + post cache) – can be recreated
       - sessions:/app/sessions
+      # Topics (event definitions) – must survive rebuilds
+      - topics:/app/topics
     restart: unless-stopped
 
 volumes:
   sessions:
+  topics:

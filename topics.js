@@ -3,7 +3,7 @@
 const fs   = require('fs');
 const path = require('path');
 
-const DIR    = process.env.SESSIONS_DIR || './sessions';
+const DIR    = process.env.TOPICS_DIR || process.env.SESSIONS_DIR || './sessions';
 const PREFIX = 'topic-';
 
 const DEFAULT_GROUP_A = {

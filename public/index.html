@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Social Dashboard</title>
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="./socket.io/socket.io.js"></script>
   <style>
     /* ══ TOKENS ═══════════════════════════════════════════════════════════════
        Dark mode (default) – inspired by editorial dashboards                 */
@@ -469,7 +469,7 @@
 
       <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;">
         <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
-          <span>💡 Hashtag-suggesties</span>
+          <span>💡 Hashtag-suggesties <span id="suggestCount" style="font-weight:400;color:var(--muted);"></span></span>
           <button class="sp-dismiss-all" id="dismissAllBtn" onclick="dismissAllSuggestions()" style="margin-left:0;">Alles afwijzen</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;" id="suggestPills"></div>
@@ -539,6 +539,12 @@
     a: ['4daagse','nijmeegsevierdaagse','vierdaagse','nijmegen','vierdaagse2025'],
     b: ['vierdaagsefeesten','4daagsefeesten'],
   };
+
+  const APP_BASE = (() => {
+    if (typeof window.__BASE === 'string') return window.__BASE;
+    const path = window.location.pathname.replace(/\/$/, '');
+    return path === '' ? '' : path;
+  })();
 
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const timeLabel = ts => new Date(ts).toLocaleString('nl-NL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
@@ -912,7 +918,7 @@
   })();
 
   // ── Socket.io ──────────────────────────────────────────────────────────────
-  const socket = io({ path: (window.__BASE || '') + '/socket.io' });
+  const socket = io({ path: APP_BASE + '/socket.io' });
 
   socket.on('connect',    () => { document.getElementById('dot').classList.remove('off'); });
   socket.on('disconnect', () => { document.getElementById('dot').classList.add('off'); });
@@ -1005,12 +1011,15 @@
   socket.on('hashtags:suggestions', suggestions => {
     const pills  = document.getElementById('suggestPills');
     const noMsg  = document.getElementById('noSuggestMsg');
+    const countEl = document.getElementById('suggestCount');
     if (!suggestions.length) {
       pills.innerHTML = '';
       if (noMsg) noMsg.style.display = 'block';
+      if (countEl) countEl.textContent = '';
       return;
     }
     if (noMsg) noMsg.style.display = 'none';
+    if (countEl) countEl.textContent = `(${suggestions.length})`;
     pills.innerHTML = suggestions.map(s => `
       <span class="suggest-pill">
         #${esc(s.tag)}
@@ -1066,7 +1075,7 @@
     const formData = new FormData();
     formData.append('session', file);
     try {
-      const res  = await fetch(`${window.__BASE || ''}/instagram/upload-session`, { method: 'POST', body: formData });
+      const res  = await fetch(`${APP_BASE}/instagram/upload-session`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.ok) {
         statusEl.textContent = '✅ Sessie bijgewerkt!';
