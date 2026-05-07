@@ -455,6 +455,16 @@
 
   <!-- Huidig onderwerp: beheer (zichtbaar als topic actief is) -->
   <div id="launcherManage" style="display:none;width:100%;max-width:960px;margin-top:8px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:220px;">
+        <span style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">🔐 Instagram-sessie</span>
+        <span style="font-size:.75rem;color:var(--muted);">Upload hier handmatig een nieuwe sessie-JSON zonder de normale dashboardgebruikers hiermee te belasten.</span>
+      </div>
+      <button class="hdr-btn" onclick="openIgSessionPicker()" title="Upload een nieuwe Instagram-sessie JSON" style="margin-left:auto;">📂 Insta-sessie uploaden</button>
+      <input id="igSessionInput" type="file" accept=".json" onchange="uploadIgSession(this)" style="display:none">
+      <span id="igSessionStatus" style="font-size:.72rem;color:var(--muted);white-space:nowrap;display:none"></span>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
 
       <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;">
@@ -507,7 +517,7 @@
       <button class="fbtn" id="hideBtn" onclick="toggleHideReviewed()">👁 Beoordeeld</button>
 
       <span id="stats"></span>
-      <button class="fbtn refresh" id="refreshBtn" onclick="manualScrape()" title="Vernieuwt direct TikTok en Bluesky. (Het dashboard ververst automatisch iedere 5 minuten Bluesky, 10 minuten TikTok en 15 minuten Instagram.)">↻ Vernieuwen</button>
+      <button class="fbtn refresh" id="refreshBtn" onclick="manualScrape()" title="Vernieuwt direct TikTok en Bluesky. Instagram blijft buiten handmatige refresh om het scrape-ritme menselijk te houden.">↻ Vernieuwen</button>
       <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Schakel licht/donker">☀</button>
       <button class="hdr-btn" onclick="switchTopic()">⇄ Wissel / Beheer</button>
     </header>
@@ -1066,25 +1076,45 @@
     });
   };
 
+  function setIgSessionStatus(message, tone = 'muted') {
+    const headerStatus = document.getElementById('igSessionStatus');
+    const bannerStatus = document.getElementById('igUploadStatus');
+    const colorMap = {
+      muted: 'var(--muted)',
+      pending: '#fde68a',
+      success: 'var(--green)',
+      error: 'var(--red)',
+    };
+    [headerStatus, bannerStatus].forEach(el => {
+      if (!el) return;
+      el.textContent = message;
+      el.style.color = colorMap[tone] || colorMap.muted;
+      el.style.display = message ? 'inline' : 'none';
+    });
+  }
+
+  function openIgSessionPicker() {
+    document.getElementById('igSessionInput')?.click();
+  }
+
   // ── Instagram session upload ───────────────────────────────────────────────────
   async function uploadIgSession(input) {
     const file = input.files[0];
     if (!file) return;
-    const statusEl = document.getElementById('igUploadStatus');
-    statusEl.textContent = '⏳ Uploaden…';
+    setIgSessionStatus('⏳ Uploaden…', 'pending');
     const formData = new FormData();
     formData.append('session', file);
     try {
       const res  = await fetch(`${APP_BASE}/instagram/upload-session`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.ok) {
-        statusEl.textContent = '✅ Sessie bijgewerkt!';
-        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+        setIgSessionStatus('✅ Sessie bijgewerkt!', 'success');
+        setTimeout(() => { setIgSessionStatus(''); }, 5000);
       } else {
-        statusEl.textContent = `❌ ${data.error}`;
+        setIgSessionStatus(`❌ ${data.error}`, 'error');
       }
     } catch (err) {
-      statusEl.textContent = `❌ ${err.message}`;
+      setIgSessionStatus(`❌ ${err.message}`, 'error');
     }
     input.value = ''; // reset zodat je hetzelfde bestand opnieuw kunt uploaden
   }
@@ -1095,7 +1125,11 @@
       banner.classList.add('visible');
     } else {
       banner.classList.remove('visible');
-      document.getElementById('igUploadStatus').textContent = '';
+      const bannerStatus = document.getElementById('igUploadStatus');
+      if (bannerStatus) {
+        bannerStatus.textContent = '';
+        bannerStatus.style.display = 'none';
+      }
     }
   });
 </script>

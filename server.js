@@ -371,7 +371,7 @@ io.on('connection', (socket) => {
     io.emit('topic:active', topics.summary(activeTopic));
   });
 
-  // Vernieuwen-knop: alleen TikTok + Bluesky (Instagram scrapet automatisch om blokkade te voorkomen)
+  // Vernieuwen-knop: alleen TikTok + Bluesky; Instagram blijft bewust buiten handmatige refresh
   socket.on('scrape:now:fast', () => {
     const COOLDOWN = 60_000;
     const elapsed  = Date.now() - lastManualScrape;
