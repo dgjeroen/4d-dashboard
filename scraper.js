@@ -26,6 +26,7 @@ let sharedBrowser = null;
 let igBlocked     = false;
 let igDebugInfo   = {
   finalUrl: '',
+  httpStatus: null,
   pageTitle: '',
   domPostLinks: 0,
   bodySnippet: '',
@@ -279,6 +280,38 @@ async function inspectInstagramPage(page) {
   }
 }
 
+async function waitForInstagramSurface(page, timeout = 10_000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeout) {
+    try {
+      const state = await page.evaluate(() => {
+        const title = document.title || '';
+        const bodyText = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+        const domPostLinks = document.querySelectorAll('a[href*="/p/"]').length;
+        const hasLoginInput = Boolean(
+          document.querySelector('input[name="username"], input[name="password"]')
+        );
+        return {
+          title,
+          bodyTextLength: bodyText.length,
+          domPostLinks,
+          hasLoginInput,
+        };
+      });
+
+      if (state.domPostLinks > 0) return;
+      if (state.hasLoginInput) return;
+      if (state.title.trim()) return;
+      if (state.bodyTextLength > 80) return;
+    } catch {
+      // Ignore transient evaluate/navigation errors while the page is still settling.
+    }
+
+    await page.waitForTimeout(500);
+  }
+}
+
 async function scrapeInstagram(hashtag, igCtx) {
   if (igBlocked) {
     console.log(`[Instagram] Overgeslagen (geblokkeerd) – #${hashtag}`);
@@ -291,6 +324,7 @@ async function scrapeInstagram(hashtag, igCtx) {
   igDebugInfo = {
     ...igDebugInfo,
     finalUrl: tagUrl,
+    httpStatus: null,
     pageTitle: '',
     domPostLinks: 0,
     bodySnippet: '',
@@ -321,7 +355,9 @@ async function scrapeInstagram(hashtag, igCtx) {
   });
 
   try {
-    await page.goto(tagUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+    const response = await page.goto(tagUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+    await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+    await waitForInstagramSurface(page);
     const finalUrl = page.url();
     console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
 
@@ -329,6 +365,7 @@ async function scrapeInstagram(hashtag, igCtx) {
     igDebugInfo = {
       ...igDebugInfo,
       finalUrl,
+      httpStatus: response?.status?.() ?? null,
       pageTitle: pageInfo.pageTitle,
       domPostLinks: pageInfo.domPostLinks,
       bodySnippet: pageInfo.bodySnippet,
@@ -346,6 +383,7 @@ async function scrapeInstagram(hashtag, igCtx) {
     await page.waitForTimeout(rand(1500, 3000));
     await humanScroll(page);
     await page.waitForTimeout(rand(1000, 2500));
+    await waitForInstagramSurface(page, 5_000);
 
     pageInfo = await inspectInstagramPage(page);
     igDebugInfo = {
@@ -385,6 +423,7 @@ async function scrapeInstagram(hashtag, igCtx) {
     igDebugInfo = {
       ...igDebugInfo,
       finalUrl,
+      httpStatus: null,
       pageTitle,
       domPostLinks: 0,
       bodySnippet: bodySnippet || err.message,
