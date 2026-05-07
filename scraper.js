@@ -122,12 +122,7 @@ function parseInstagramMedia(media) {
 
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Gedeelde browser instantie voor Instagram (wordt hergebruikt tussen hashtags)
-let igBrowser = null;
-let igBrowserUses = 0;
-
-async function getIgBrowser() {
-  if (igBrowser?.isConnected()) return igBrowser;
+async function launchIgBrowser() {
   const fs2 = require('fs');
   const candidates = [
     '/ms-playwright/chromium-1117/chrome-linux/chrome',
@@ -136,14 +131,11 @@ async function getIgBrowser() {
   ].filter(Boolean);
   const executablePath = candidates.find(p => fs2.existsSync(p));
   if (!executablePath) throw new Error('Chromium niet gevonden');
-  igBrowser = await chromium.launch({
+  return chromium.launch({
     headless: true,
     executablePath,
     args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'],
   });
-  igBrowser.on('disconnected', () => { igBrowser = null; igBrowserUses = 0; });
-  igBrowserUses = 0;
-  return igBrowser;
 }
 
 function extractPostsFromIgData(data) {
@@ -624,16 +616,16 @@ async function getInstagramPosts(hashtags) {
   }
 
   let igCtx = null;
+  let igBrowser = null;
   try {
-    const browser = await getIgBrowser();
-    igCtx = await browser.newContext({
+    igBrowser = await launchIgBrowser();
+    igCtx = await igBrowser.newContext({
       storageState: fs.existsSync(`${SESSIONS_DIR}/instagram.json`) ? `${SESSIONS_DIR}/instagram.json` : undefined,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       viewport:  { width: 1280, height: 900 },
       locale:    'nl-NL',
       timezoneId:'Europe/Amsterdam',
     });
-    igBrowserUses++;
   } catch (err) {
     igDebugInfo = {
       ...igDebugInfo,
@@ -675,6 +667,7 @@ async function getInstagramPosts(hashtags) {
   }
 
   try { await igCtx.close(); } catch {}
+  try { await igBrowser?.close(); } catch {}
   return dedup(results);
 }
 
@@ -721,10 +714,6 @@ async function getAllPosts(hashtags) {
 }
 
 async function reAuthInstagram() {
-  if (igBrowser) {
-    try { await igBrowser.close(); } catch {}
-    igBrowser = null;
-  }
   igBlocked = false;
   console.log('[Instagram] Browser herstart na sessie-update');
 }
