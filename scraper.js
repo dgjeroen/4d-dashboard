@@ -24,9 +24,17 @@ const TIMEOUT      = 30_000;
 
 let sharedBrowser = null;
 let igBlocked     = false;
+let igDebugInfo   = {
+  finalUrl: '',
+  pageTitle: '',
+  domPostLinks: 0,
+  bodySnippet: '',
+  authWall: false,
+};
 
 function getIgBlocked()  { return igBlocked; }
 function setIgBlocked(v) { igBlocked = v; }
+function getIgDebugInfo() { return igDebugInfo; }
 
 // ─── Browser / context management ────────────────────────────────────────────
 
@@ -264,6 +272,21 @@ async function looksLikeInstagramAuthWall(page) {
   }
 }
 
+async function inspectInstagramPage(page) {
+  try {
+    return await page.evaluate(() => {
+      const text = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+      return {
+        pageTitle: document.title || '',
+        domPostLinks: document.querySelectorAll('a[href*="/p/"]').length,
+        bodySnippet: text.slice(0, 240),
+      };
+    });
+  } catch {
+    return { pageTitle: '', domPostLinks: 0, bodySnippet: '' };
+  }
+}
+
 async function scrapeInstagram(hashtag, igCtx) {
   if (igBlocked) {
     console.log(`[Instagram] Overgeslagen (geblokkeerd) – #${hashtag}`);
@@ -302,7 +325,18 @@ async function scrapeInstagram(hashtag, igCtx) {
     const finalUrl = page.url();
     console.log(`[Instagram] #${hashtag} → ${finalUrl.slice(0, 80)}`);
 
+    let pageInfo = await inspectInstagramPage(page);
+    igDebugInfo = {
+      ...igDebugInfo,
+      finalUrl,
+      pageTitle: pageInfo.pageTitle,
+      domPostLinks: pageInfo.domPostLinks,
+      bodySnippet: pageInfo.bodySnippet,
+      authWall: false,
+    };
+
     if (await looksLikeInstagramAuthWall(page)) {
+      igDebugInfo.authWall = true;
       console.warn(`[Instagram] Geblokkeerd – sessie NIET overschreven`);
       igBlocked = true;
       return posts;
@@ -313,6 +347,15 @@ async function scrapeInstagram(hashtag, igCtx) {
     await humanScroll(page);
     await page.waitForTimeout(rand(1000, 2500));
 
+    pageInfo = await inspectInstagramPage(page);
+    igDebugInfo = {
+      ...igDebugInfo,
+      finalUrl: page.url(),
+      pageTitle: pageInfo.pageTitle,
+      domPostLinks: pageInfo.domPostLinks,
+      bodySnippet: pageInfo.bodySnippet,
+    };
+
     if (posts.length === 0) {
       const domPosts = await extractPostsFromIgDom(page);
       if (domPosts.length > 0) {
@@ -322,6 +365,7 @@ async function scrapeInstagram(hashtag, igCtx) {
     }
 
     if (posts.length === 0 && await looksLikeInstagramAuthWall(page)) {
+      igDebugInfo.authWall = true;
       console.warn(`[Instagram] Login-wall gedetecteerd zonder API-responses – sessie ongeldig`);
       igBlocked = true;
       return posts;
@@ -644,4 +688,4 @@ async function reAuthInstagram() {
   console.log('[Instagram] Browser herstart na sessie-update');
 }
 
-module.exports = { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram };
+module.exports = { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram, getIgDebugInfo };

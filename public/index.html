@@ -1125,10 +1125,16 @@
     const terms = (data.lastTerms || []).length ? (data.lastTerms || []).map(t => `#${esc(t)}`).join(' ') : 'geen';
     const status = data.running ? 'bezig' : (data.blocked ? 'geblokkeerd' : 'gereed');
     const error = data.lastError ? `<div>Fout: ${esc(data.lastError)}</div>` : '';
+    const pageInfo = data.finalUrl
+      ? `<div>Pagina: <strong>${esc(data.pageTitle || '(geen titel)')}</strong> · ${Number(data.domPostLinks || 0)} DOM-postlinks · <span style="word-break:break-all">${esc(data.finalUrl)}</span></div>`
+      : '';
+    const snippet = data.bodySnippet ? `<div>Snippet: ${esc(data.bodySnippet)}</div>` : '';
     el.innerHTML = `
       <div>Status: <strong>${esc(status)}</strong> · Trigger: <strong>${esc(trigger)}</strong> · Laatste check: <strong>${esc(lastRun)}</strong></div>
       <div>Instagram-resultaat: <strong>${Number(data.lastFetched || 0)}</strong> opgehaald, <strong>${Number(data.lastAdded || 0)}</strong> toegevoegd, <strong>${Number(data.lastSkipped || 0)}</strong> overgeslagen</div>
       <div>Gezochte hashtags: ${terms}</div>
+      ${pageInfo}
+      ${snippet}
       ${error}`;
   }
 

@@ -8,7 +8,7 @@ const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
 
-const { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram } = require('./scraper');
+const { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram, getIgDebugInfo } = require('./scraper');
 const { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions } = require('./hashtags');
 const topics = require('./topics');
 const { addHashtagToGroup, addCombo, removeCombo } = topics;
@@ -118,6 +118,11 @@ let   igDiagnostics  = {
   lastSkipped: 0,
   lastError: '',
   lastTerms: [],
+  finalUrl: '',
+  pageTitle: '',
+  domPostLinks: 0,
+  bodySnippet: '',
+  authWall: false,
 };
 
 // ─── Cache persistence ────────────────────────────────────────────────────────
@@ -237,12 +242,14 @@ async function runInstagramScrape(trigger = 'cron') {
   emitInstagramDiagnostics();
   try {
     const posts = await getInstagramPosts(getHashtags());
+    Object.assign(igDiagnostics, getIgDebugInfo());
     igDiagnostics.lastFetched = posts.length;
     const result = await ingestPosts(posts, 'instagram');
     igDiagnostics.lastAdded = result?.added || 0;
     igDiagnostics.lastSkipped = result?.skipped || 0;
     igDiagnostics.blocked = getIgBlocked();
   } catch (err) {
+    Object.assign(igDiagnostics, getIgDebugInfo());
     igDiagnostics.lastError = err.message;
     igDiagnostics.blocked = getIgBlocked();
     console.error('[Scrape:instagram]', err.message);
