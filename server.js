@@ -31,7 +31,8 @@ function renderIndex(req, res) {
 }
 
 // ─── Auth (centraal via adrlab.cloud) ────────────────────────────────────────
-if (process.env.AUTH_ENABLED !== '0') {
+// Alleen inschakelen als de hostinglaag dit expliciet vraagt.
+if (process.env.AUTH_ENABLED === '1') {
   app.use(requireAuth);
 }
 
