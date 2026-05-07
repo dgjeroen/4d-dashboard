@@ -181,6 +181,48 @@ function extractPostsFromIgData(data) {
   return posts;
 }
 
+async function extractPostsFromIgDom(page) {
+  try {
+    return await page.evaluate(() => {
+      const results = [];
+      const seen = new Set();
+      const anchors = Array.from(document.querySelectorAll('a[href*="/p/"]'));
+
+      for (const anchor of anchors) {
+        const href = anchor.getAttribute('href') || '';
+        const match = href.match(/\/p\/([^/?#]+)/);
+        if (!match) continue;
+        const shortcode = match[1];
+        if (seen.has(shortcode)) continue;
+        seen.add(shortcode);
+
+        const img = anchor.querySelector('img');
+        const timeEl = anchor.querySelector('time') || anchor.parentElement?.querySelector('time');
+        const caption = img?.getAttribute('alt') || '';
+        const dateTime = timeEl?.getAttribute('datetime');
+        const timestamp = dateTime ? new Date(dateTime).getTime() : Date.now();
+
+        results.push({
+          id: `ig_dom_${shortcode}`,
+          platform: 'instagram',
+          author: 'unknown',
+          authorUrl: 'https://www.instagram.com/',
+          caption,
+          imageUrl: img?.getAttribute('src') || '',
+          postUrl: href.startsWith('http') ? href : `https://www.instagram.com${href}`,
+          likes: 0,
+          timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+          hashtags: (caption.match(/#[\w\u00C0-\u024F]+/g) || []).map(h => h.slice(1).toLowerCase()),
+        });
+      }
+
+      return results;
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function humanScroll(page) {
   // Scroll in stappen naar beneden, met kleine variaties
   const steps = rand(3, 6);
@@ -270,6 +312,14 @@ async function scrapeInstagram(hashtag, igCtx) {
     await page.waitForTimeout(rand(1500, 3000));
     await humanScroll(page);
     await page.waitForTimeout(rand(1000, 2500));
+
+    if (posts.length === 0) {
+      const domPosts = await extractPostsFromIgDom(page);
+      if (domPosts.length > 0) {
+        posts.push(...domPosts);
+        console.log(`[Instagram] +${domPosts.length} posts via DOM fallback`);
+      }
+    }
 
     if (posts.length === 0 && await looksLikeInstagramAuthWall(page)) {
       console.warn(`[Instagram] Login-wall gedetecteerd zonder API-responses – sessie ongeldig`);
