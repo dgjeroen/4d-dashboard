@@ -11,7 +11,7 @@ const multer     = require('multer');
 const { getAllPosts, getInstagramPosts, getTikTokPosts, getBskyPosts, getIgBlocked, setIgBlocked, reAuthInstagram, getIgDebugInfo } = require('./scraper');
 const { getHashtags, setHashtags, updateHashtags, trackRemoval, approveSuggestion, getSuggestions } = require('./hashtags');
 const topics = require('./topics');
-const { addHashtagToGroup, addCombo, removeCombo } = topics;
+const { addHashtagToGroup, addCombo, removeCombo, updateRelevance: updateTopicRelevance } = topics;
 const requireAuth = require('./auth');
 
 const app    = express();
@@ -205,6 +205,73 @@ function emitInstagramDiagnostics() {
   io.emit('instagram:diagnostics', igDiagnostics);
 }
 
+function normalizeSearchText(value = '') {
+  return String(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getTermVariants(term) {
+  const normalized = normalizeSearchText(term);
+  const aliases = new Set([normalized]);
+  const compact = normalized.replace(/\s+/g, '');
+  const spacedDigits = normalized.replace(/(\d)([a-z])/g, '$1 $2').replace(/([a-z])(\d)/g, '$1 $2');
+  const dashed = normalized.replace(/\s+/g, '-');
+  const underscored = normalized.replace(/\s+/g, '_');
+  if (compact && compact !== normalized) aliases.add(compact);
+  if (spacedDigits && spacedDigits !== normalized) aliases.add(spacedDigits);
+  if (dashed && dashed !== normalized) aliases.add(dashed);
+  if (underscored && underscored !== normalized) aliases.add(underscored);
+  return [...aliases].filter(Boolean);
+}
+
+function buildPostSearchIndex(post) {
+  const hashtags = [...new Set((post.hashtags || []).map(tag => normalizeSearchText(tag)).filter(Boolean))];
+  const hashtagSet = new Set(hashtags);
+  const text = normalizeSearchText([
+    post.caption,
+    post.author,
+    post.postUrl,
+  ].filter(Boolean).join(' '));
+  return { hashtagSet, text };
+}
+
+function postMatchesTerm(searchIndex, term) {
+  return getTermVariants(term).some(variant => searchIndex.hashtagSet.has(variant) || searchIndex.text.includes(variant));
+}
+
+function scorePostAgainstTopic(post, topic) {
+  const relevance = topic?.relevance || { strongHashtags: [], supportingHashtags: [], minScore: 3 };
+  const searchIndex = buildPostSearchIndex(post);
+  const matchedStrong = relevance.strongHashtags.filter(term => postMatchesTerm(searchIndex, term));
+  const matchedSupporting = relevance.supportingHashtags.filter(term => postMatchesTerm(searchIndex, term));
+  const score = matchedStrong.length * 3 + matchedSupporting.length;
+  const accepted = score >= Math.max(1, Number(relevance.minScore) || 3);
+
+  return {
+    accepted,
+    score,
+    minScore: Math.max(1, Number(relevance.minScore) || 3),
+    matchedStrong,
+    matchedSupporting,
+  };
+}
+
+function postMatchesTopic(post, topic) {
+  const relevance = scorePostAgainstTopic(post, topic);
+  const postTags = new Set(post.hashtags || []);
+  const matchesCombo = (topic?.combos || []).some(c => postTags.has(c.a) && postTags.has(c.b));
+  return {
+    accepted: relevance.accepted || matchesCombo,
+    matchesCombo,
+    relevance,
+  };
+}
+
 // ─── Broadcast ────────────────────────────────────────────────────────────────
 function broadcastAll() {
   if (activeTopic) io.emit('topic:active', topics.summary(activeTopic));
@@ -222,14 +289,17 @@ let bskyRunning = false;
 
 async function ingestPosts(newPosts, label) {
   if (!activeTopic) return;
-  const activeTagSet  = new Set(getHashtags());
-  const activeCombos  = activeTopic.combos || [];
   let added = 0, skipped = 0;
   for (const post of newPosts) {
-    const postTags = new Set(post.hashtags || []);
-    const matchesTag   = [...activeTagSet].some(t => postTags.has(t));
-    const matchesCombo = activeCombos.some(c => postTags.has(c.a) && postTags.has(c.b));
-    if (!matchesTag && !matchesCombo) { skipped++; continue; }
+    const match = postMatchesTopic(post, activeTopic);
+    if (!match.accepted) { skipped++; continue; }
+    post.relevance = {
+      score: match.relevance.score,
+      minScore: match.relevance.minScore,
+      strong: match.relevance.matchedStrong,
+      supporting: match.relevance.matchedSupporting,
+      viaCombo: match.matchesCombo,
+    };
     if (!postCache.has(post.id)) added++;
     postCache.set(post.id, post);
   }
@@ -391,6 +461,33 @@ io.on('connection', (socket) => {
     }
     io.emit('topics:list', topics.list().map(topics.summary));
     if (cb) cb({ ok: true });
+  });
+
+  socket.on('topic:relevance:update', ({ id, relevance }, cb) => {
+    const updated = updateTopicRelevance(id, relevance);
+    if (!updated) { if (cb) cb({ ok: false, error: 'Not found' }); return; }
+    if (activeTopic?.id === id) {
+      activeTopic = updated;
+      for (const [postId, post] of postCache.entries()) {
+        const match = postMatchesTopic(post, activeTopic);
+        if (!match.accepted) {
+          postCache.delete(postId);
+          continue;
+        }
+        post.relevance = {
+          score: match.relevance.score,
+          minScore: match.relevance.minScore,
+          strong: match.relevance.matchedStrong,
+          supporting: match.relevance.matchedSupporting,
+          viaCombo: match.matchesCombo,
+        };
+      }
+      saveCache();
+      io.emit('topic:active', topics.summary(updated));
+      io.emit('posts:update', postsWithStatus());
+    }
+    io.emit('topics:list', topics.list().map(topics.summary));
+    if (cb) cb({ ok: true, relevance: updated.relevance });
   });
 
   // ── Update hashtags for active topic ──────────────────────────────────────

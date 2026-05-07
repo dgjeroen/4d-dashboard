@@ -15,6 +15,36 @@ const DEFAULT_GROUP_B = {
   hashtags: ['vierdaagsefeesten','4daagsefeesten'],
 };
 
+function normalizeTermList(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map(value => String(value || '').trim().replace(/^#/, '').toLowerCase())
+    .filter(Boolean))];
+}
+
+function defaultRelevance(hashtags = []) {
+  return {
+    strongHashtags: normalizeTermList(hashtags),
+    supportingHashtags: [],
+    minScore: 3,
+  };
+}
+
+function normalizeRelevance(relevance, hashtags = []) {
+  const fallback = defaultRelevance(hashtags);
+  const strongHashtags = normalizeTermList(relevance?.strongHashtags);
+  const normalized = {
+    strongHashtags,
+    supportingHashtags: normalizeTermList(relevance?.supportingHashtags).filter(term => !strongHashtags.includes(term)),
+    minScore: Number.isFinite(Number(relevance?.minScore)) ? Math.max(1, Number(relevance.minScore)) : fallback.minScore,
+  };
+
+  if (!normalized.strongHashtags.length && !normalized.supportingHashtags.length) {
+    return fallback;
+  }
+
+  return normalized;
+}
+
 function topicFile(id) { return path.join(DIR, `${PREFIX}${id}.json`); }
 
 function _normalize(t) {
@@ -27,6 +57,7 @@ function _normalize(t) {
     t.hashtags = [...new Set([...(t.groupA.hashtags||[]), ...(t.groupB.hashtags||[])])];
   }
   if (!t.combos) t.combos = [];
+  t.relevance = normalizeRelevance(t.relevance, t.hashtags);
   return t;
 }
 
@@ -57,7 +88,7 @@ function create(name, groupA, groupB) {
   const gA = { name: groupA?.name || DEFAULT_GROUP_A.name, hashtags: groupA?.hashtags || [...DEFAULT_GROUP_A.hashtags] };
   const gB = { name: groupB?.name || DEFAULT_GROUP_B.name, hashtags: groupB?.hashtags || [...DEFAULT_GROUP_B.hashtags] };
   const allHashtags = [...new Set([...gA.hashtags, ...gB.hashtags])];
-  return save({ id, name, groupA: gA, groupB: gB, hashtags: allHashtags, combos: [], reviewedIds: {}, createdAt: Date.now(), lastActiveAt: Date.now() });
+  return save({ id, name, groupA: gA, groupB: gB, hashtags: allHashtags, combos: [], relevance: defaultRelevance(allHashtags), reviewedIds: {}, createdAt: Date.now(), lastActiveAt: Date.now() });
 }
 
 function markPost(topicId, postId, status) {
@@ -72,6 +103,7 @@ function updateHashtags(topicId, hashtags) {
   const t = load(topicId);
   if (!t) return null;
   t.hashtags = hashtags;
+  t.relevance = normalizeRelevance(t.relevance, t.hashtags);
   return save(t);
 }
 
@@ -84,16 +116,26 @@ function addHashtagToGroup(topicId, tag, group) {
     if (!t.groupA.hashtags.includes(tag)) t.groupA.hashtags.push(tag);
   }
   t.hashtags = [...new Set([...(t.groupA.hashtags||[]), ...(t.groupB.hashtags||[])])];
+  t.relevance = normalizeRelevance(t.relevance, t.hashtags);
   return save(t);
 }
 
-function update(topicId, { name, groupA, groupB }) {
+function update(topicId, { name, groupA, groupB, relevance }) {
   const t = load(topicId);
   if (!t) return null;
   if (name)   t.name   = name;
   if (groupA) t.groupA = groupA;
   if (groupB) t.groupB = groupB;
   t.hashtags = [...new Set([...(t.groupA.hashtags||[]), ...(t.groupB.hashtags||[])])];
+  if (relevance) t.relevance = normalizeRelevance(relevance, t.hashtags);
+  else t.relevance = normalizeRelevance(t.relevance, t.hashtags);
+  return save(t);
+}
+
+function updateRelevance(topicId, relevance) {
+  const t = load(topicId);
+  if (!t) return null;
+  t.relevance = normalizeRelevance(relevance, t.hashtags);
   return save(t);
 }
 
@@ -121,10 +163,11 @@ function summary(t) {
     groupB:        { name: t.groupB?.name || 'Groep B', hashtags: t.groupB?.hashtags || [] },
     hashtags:      t.hashtags || [],
     combos:        t.combos || [],
+    relevance:     normalizeRelevance(t.relevance, t.hashtags),
     reviewedCount: Object.keys(t.reviewedIds || {}).length,
     createdAt:     t.createdAt,
     lastActiveAt:  t.lastActiveAt,
   };
 }
 
-module.exports = { list, load, save, create, update, markPost, updateHashtags, addHashtagToGroup, addCombo, removeCombo, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };
+module.exports = { list, load, save, create, update, updateRelevance, markPost, updateHashtags, addHashtagToGroup, addCombo, removeCombo, summary, DEFAULT_GROUP_A, DEFAULT_GROUP_B };

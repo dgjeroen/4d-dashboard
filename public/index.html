@@ -466,14 +466,36 @@
       <div id="igDiagnostics" style="width:100%;margin-top:6px;font-size:.74rem;color:var(--muted);line-height:1.5;"></div>
     </div>
 
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:start;">
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+        <span style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">🎯 Sterke termen</span>
+        <textarea id="relevanceStrong" placeholder="#walkoftheworld, #viagladiola" style="min-height:84px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.82rem;resize:vertical;"></textarea>
+        <span style="font-size:.72rem;color:var(--muted);">Elke match telt zwaar en mag op zichzelf al genoeg zijn.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+        <span style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">🧩 Aanvullende termen</span>
+        <textarea id="relevanceSupporting" placeholder="#nijmegen, #wandelen, #gladiolen" style="min-height:84px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.82rem;resize:vertical;"></textarea>
+        <span style="font-size:.72rem;color:var(--muted);">Deze tellen mee via hashtags én via de overige tekst van een post.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+        <span style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">📏 Min. score</span>
+        <input id="relevanceMinScore" type="number" min="1" step="1" value="3" style="padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.9rem;">
+        <span style="font-size:.72rem;color:var(--muted);">Sterk = 3 punten, aanvullend = 1 punt.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-self:stretch;justify-content:flex-start;">
+        <button class="hdr-btn" onclick="saveRelevanceSettings()" style="padding:10px 14px;">💾 Relevantie opslaan</button>
+        <span id="relevanceStatus" style="font-size:.72rem;color:var(--muted);line-height:1.4;"></span>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
 
       <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;">
         <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
-          <span>🔗 AND-filters</span>
+          <span>🔗 Geavanceerde AND-filters</span>
           <button class="combo-add" onclick="openAddComboDialog()" style="font-size:.75rem;padding:3px 10px;">+ Toevoegen</button>
         </div>
-        <p style="color:var(--muted);font-size:.75rem;margin-bottom:8px;">Alleen posts met <em>beide</em> tags. Losse tags worden niet toegevoegd.</p>
+        <p style="color:var(--muted);font-size:.75rem;margin-bottom:8px;">Optioneel voor uitzonderingen. De nieuwe relevantiescore is nu het primaire filter.</p>
         <div style="display:flex;flex-wrap:wrap;gap:6px;" id="comboPills"></div>
         <p id="noComboMsg" style="color:var(--muted);font-size:.75rem;margin-top:6px;">Nog geen AND-filters. Klik + om een combinatie toe te voegen.</p>
       </div>
@@ -799,6 +821,14 @@
     const embedBtn = p.imageUrl ? `<button class="btn" data-embed="${p.id}" onclick="copyEmbed('${p.id}')">🖼️ Embed</button>` : '';
     const capEl   = p.caption  ? `<div class="caption" data-cap="${p.id}" onclick="toggleCaption('${p.id}')">${esc(p.caption)}</div>` : '';
     const badge   = rs ? `<div class="review-badge ${rs}">${rs==='used'?'✓ Gebruikt':'✗ Skip'}</div>` : '';
+    const relevanceHits = [
+      ...((p.relevance?.strong || []).map(tag => `#${tag}`)),
+      ...((p.relevance?.supporting || []).map(tag => `#${tag}`)),
+      ...(p.relevance?.viaCombo ? ['AND-filter'] : []),
+    ];
+    const relevanceEl = p.relevance
+      ? `<div style="padding:0 12px 6px;font-size:.67rem;color:var(--muted);">score ${Number(p.relevance.score || 0)}/${Number(p.relevance.minScore || 0)}${relevanceHits.length ? ` · ${esc(relevanceHits.slice(0,4).join(' · '))}` : ''}</div>`
+      : '';
     return `
       <div class="card${fresh}${rs?' '+rs:''}" data-id="${p.id}">
         ${badge}
@@ -809,6 +839,7 @@
           <a class="card-author" href="${esc(p.authorUrl)}" target="_blank" rel="noopener">@${esc(p.author)}</a>
         </div>
         <div class="card-time">${timeLabel(p.timestamp)}<span class="card-likes">❤️ ${p.likes.toLocaleString('nl-NL')}</span></div>
+        ${relevanceEl}
         ${capEl}
         <div class="actions">
           <button class="btn" data-copy="${p.id}" onclick="copyText('${p.id}')">📋 Tekst</button>
@@ -952,6 +983,7 @@
     document.getElementById('topicName').textContent = t.name;
     document.getElementById('fA').textContent = t.groupA.name;
     document.getElementById('fB').textContent = t.groupB.name;
+    renderRelevanceEditor(t);
     const launcher = document.getElementById('launcher');
     const app = document.getElementById('app');
     const manage = document.getElementById('launcherManage');
@@ -1113,6 +1145,54 @@
       el.textContent = message;
       el.style.color = colorMap[tone] || colorMap.muted;
       el.style.display = message ? 'inline' : 'none';
+    });
+  }
+
+  function setRelevanceStatus(message, tone = 'muted') {
+    const el = document.getElementById('relevanceStatus');
+    if (!el) return;
+    const colorMap = {
+      muted: 'var(--muted)',
+      pending: '#fde68a',
+      success: 'var(--green)',
+      error: 'var(--red)',
+    };
+    el.textContent = message;
+    el.style.color = colorMap[tone] || colorMap.muted;
+  }
+
+  function parseTermList(value) {
+    return [...new Set(String(value || '')
+      .split(/[\n,;]+/)
+      .map(part => part.trim().replace(/^#/, '').toLowerCase())
+      .filter(Boolean))];
+  }
+
+  function renderRelevanceEditor(topic) {
+    const relevance = topic?.relevance || { strongHashtags: [], supportingHashtags: [], minScore: 3 };
+    const strong = document.getElementById('relevanceStrong');
+    const supporting = document.getElementById('relevanceSupporting');
+    const minScore = document.getElementById('relevanceMinScore');
+    if (strong) strong.value = (relevance.strongHashtags || []).map(tag => `#${tag}`).join('\n');
+    if (supporting) supporting.value = (relevance.supportingHashtags || []).map(tag => `#${tag}`).join('\n');
+    if (minScore) minScore.value = Number(relevance.minScore || 3);
+    setRelevanceStatus('');
+  }
+
+  function saveRelevanceSettings() {
+    if (!activeTopic) return;
+    const relevance = {
+      strongHashtags: parseTermList(document.getElementById('relevanceStrong')?.value),
+      supportingHashtags: parseTermList(document.getElementById('relevanceSupporting')?.value),
+      minScore: Math.max(1, Number(document.getElementById('relevanceMinScore')?.value || 3)),
+    };
+    setRelevanceStatus('Opslaan…', 'pending');
+    socket.emit('topic:relevance:update', { id: activeTopic.id, relevance }, response => {
+      if (response?.ok) {
+        setRelevanceStatus('Relevantie opgeslagen. Huidige posts zijn direct opnieuw beoordeeld.', 'success');
+      } else {
+        setRelevanceStatus(response?.error || 'Opslaan mislukt.', 'error');
+      }
     });
   }
 
